@@ -1,18 +1,33 @@
 <!doctype html>
 <meta charset="utf-8">
-<title>Brad Haft — LinkedIn posts</title>
+<title>RSS feeds</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<link rel="alternate" type="application/rss+xml" title="Brad Haft — LinkedIn posts" href="feed.xml">
 <style>
-  body { font: 16px/1.6 system-ui, sans-serif; max-width: 34rem; margin: 4rem auto; padding: 0 1.5rem; }
-  code { background: #f4f4f5; padding: .15em .4em; border-radius: .25rem; }
+  body { font: 16px/1.6 system-ui, sans-serif; max-width: 46rem; margin: 3rem auto; padding: 0 1.5rem; }
+  table { border-collapse: collapse; width: 100%; margin: 1.5rem 0; }
+  th, td { text-align: left; padding: .5rem .75rem; border-bottom: 1px solid #e4e4e7; }
+  th { font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; color: #71717a; }
+  .num { text-align: right; font-variant-numeric: tabular-nums; }
+  .ok { color: #15803d; }
+  .failing { color: #b91c1c; font-weight: 600; }
+  .paused { color: #a1a1aa; }
+  footer { font-size: .85rem; color: #71717a; }
   @media (prefers-color-scheme: dark) {
     body { background: #18181b; color: #e4e4e7; }
-    code { background: #27272a; }
+    th, td { border-bottom-color: #3f3f46; }
     a { color: #93c5fd; }
+    .ok { color: #4ade80; }
+    .failing { color: #f87171; }
   }
 </style>
-<h1>Brad Haft — LinkedIn posts</h1>
-<p>An RSS mirror of the public posts on
-<a href="https://www.linkedin.com/in/bradhaft/">linkedin.com/in/bradhaft</a>, rebuilt weekly.</p>
-<p>Feed: <a href="feed.xml"><code>feed.xml</code></a></p>
+<h1>RSS feeds</h1>
+<p>Feeds rebuilt from Apify actors, weekly and on every change. Subscribe to any
+of them in a reader.</p>
+<table>
+  <thead><tr><th>Feed</th><th class="num">Items</th><th>Last update</th><th>State</th></tr></thead>
+  <tbody>
+      <tr><td><a href="https://rat-on-bird-up.github.io/linkedin-rss/feed.xml">Brad Haft — LinkedIn posts</a></td><td class="num">50</td><td>2026-08-22</td><td class="ok">ok</td></tr>
+  </tbody>
+</table>
+<footer>Generated 2026-08-22 17:03 UTC. Machine-readable status in
+<a href="status.json">status.json</a>.</footer>
