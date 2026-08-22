@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-08-22T19:01:42.148963+00:00",
-  "run_url": "https://github.com/rat-on-bird-up/linkedin-rss/actions/runs/32592471912",
+  "generated_at": "2026-08-22T19:05:39.688055+00:00",
+  "run_url": "https://github.com/rat-on-bird-up/linkedin-rss/actions/runs/32592686286",
   "sources": [
     {
       "slug": "feed",
@@ -12,20 +12,7 @@
       "evicted_last_run": 0,
       "fetched_last_run": 0,
       "last_success": "2026-08-22T17:33:37.706669+00:00",
-      "last_attempt": "2026-08-22T19:01:42.148976+00:00",
-      "error": ""
-    },
-    {
-      "slug": "instagram-natgeo",
-      "title": "natgeo - Instagram posts",
-      "feed": "https://rat-on-bird-up.github.io/linkedin-rss/instagram-natgeo.xml",
-      "status": "ok",
-      "items": 5,
-      "added_last_run": 5,
-      "evicted_last_run": 0,
-      "fetched_last_run": 5,
-      "last_success": "2026-08-22T19:01:27.173904+00:00",
-      "last_attempt": "2026-08-22T19:01:42.149008+00:00",
+      "last_attempt": "2026-08-22T19:05:39.688067+00:00",
       "error": ""
     }
   ]
