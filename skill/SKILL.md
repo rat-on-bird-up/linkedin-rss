@@ -8,15 +8,15 @@ description: Turns a pasted link into an RSS feed URL. Use when Guilherme shares
 Guilherme pastes a link. He gets back a feed URL to paste into Readwise Reader.
 Everything else is your problem, not his.
 
-claude.ai caps the description above at 200 characters, so the full trigger list
-lives here instead. Also apply this skill when he says "feed this", "add this to
+Descriptions are kept short by design, so the full trigger list lives here
+instead. Also apply this skill when he says "feed this", "add this to
 my reader", "RSS for this" or "subscribe me to this", when he pastes a profile
 URL with little other context, and when he asks what feeds he has, wants one
 paused or removed, or asks why a feed has gone quiet.
 
 ## The two-tier answer
 
-Most platforms already publish RSS and he should just subscribe — free, instant,
+Most platforms already publish RSS and he should just subscribe – free, instant,
 nothing to build. A minority (LinkedIn, X, Instagram, TikTok) deliberately
 withhold one, and only those justify the repo, which pays a scraper per post.
 
@@ -27,7 +27,7 @@ costs real money for something YouTube hands out for nothing.
 
 The routing table is `recipes.json` at the root of
 **`rat-on-bird-up/linkedin-rss`**. Read it through the GitHub connector and
-follow its `decision_procedure` — it is the source of truth, not this file, and
+follow its `decision_procedure` – it is the source of truth, not this file, and
 it carries every actor, price, regex and trap.
 
 The short version:
@@ -47,12 +47,12 @@ live a couple of minutes later. Verified 22 Aug 2026, end to end.
 
 **The filename is the URL, permanently.** `sources/acme.json` serves
 `/linkedin-rss/acme.xml` forever. Renaming it orphans every subscriber. Check
-the slug is free before writing — a 404 on `sources/<slug>.json` means it is.
+the slug is free before writing – a 404 on `sources/<slug>.json` means it is.
 Never overwrite a live source to fix a typo in a title; edit the title.
 
 **Always write the result cap explicitly.** Billing is per post. Several actors
 default to 100, and the Instagram one treats a missing cap as unlimited. 25 is
-the house default, and `recipes.json` names the right field per actor — it
+the house default, and `recipes.json` names the right field per actor – it
 varies (`limit`, `maxItems`, `resultsLimit`, `resultsPerPage`).
 
 **Never put a credential in a source file.** The repo is public. Any actor whose
@@ -65,14 +65,14 @@ report back before writing anything.
 ## Answering him
 
 Lead with the feed URL. Then the cost per refresh, if any. Then anything that
-will actually bite — a platform that reshares a lot will produce blank entries,
+will actually bite – a platform that reshares a lot will produce blank entries,
 a free-plan cap, an actor with a shaky success rate. `recipes.json` carries these
 per recipe in `user_notes`; pass on the ones that matter and skip the rest.
 
 Say plainly which path he got:
 
-- **Native feed** — free, instant, no repo involved.
-- **Repo feed** — live after the next build, a few minutes, and it costs per
+- **Native feed** – free, instant, no repo involved.
+- **Repo feed** – live after the next build, a few minutes, and it costs per
   refresh.
 
 Subscribing is manual and always will be: Readwise Reader has no API for adding
@@ -95,5 +95,5 @@ contents until it is deleted too.
 when sites change their markup; one failed run is usually transient.
 
 **Change the schedule.** Needs a laptop. The connector cannot write to
-`.github/workflows/` — it returns `403 Resource not accessible by integration`.
+`.github/workflows/` – it returns `403 Resource not accessible by integration`.
 Anything tunable was deliberately put in the source files for this reason.
