@@ -9,7 +9,7 @@
     "output_dir": "docs",
     "feed_url_template": "https://rat-on-bird-up.github.io/linkedin-rss/$SLUG.xml",
     "index_url": "https://rat-on-bird-up.github.io/linkedin-rss/",
-    "note": "sources/<slug>.json builds docs/<slug>.xml, served at /linkedin-rss/<slug>.xml. The builder runs weekly and on any push touching sources/, so writing the file is the whole job. The feed 404s until the next build finishes, a few minutes after the push."
+    "note": "sources/<slug>.json builds docs/<slug>.xml, served at /linkedin-rss/<slug>.xml. The builder runs weekly and on any push touching sources/, so writing the file is the whole job. The feed 404s until the next build finishes, a few minutes after the push. VERIFIED 2026-08-22: a write through the REST contents API does fire the push trigger, the build rebuilds only that source and leaves every other feed untouched, and deleting a source file is safe (the run skips the missing slug and stays green)."
   },
 
   "decision_procedure": [
@@ -391,7 +391,7 @@
       "link_template": "https://www.instagram.com/$1/",
       "slug_template": "instagram-$1",
       "keys": { "text": ["caption", "alt"], "date": ["timestamp"] },
-      "keys_reasoning": "text: the caption field is named 'caption', which appears in none of the default chain entries, so text would be empty on every item. 'alt' is a fallback for image-only posts where caption is null. date: the field is 'timestamp' (ISO with milliseconds and Z), not in the default chain, and a date miss fails silently. id ('id', fifth in the chain) and url ('url', first) both hit the defaults.",
+      "keys_reasoning": "text: the caption field is named 'caption', which appears in none of the default chain entries, so text would be empty on every item. 'alt' is a fallback for image-only posts where caption is null. date: the field is 'timestamp' (ISO with milliseconds and Z), not in the default chain, and a date miss fails silently. id ('id', fifth in the chain) and url ('url', first) both hit the defaults. Confirmed against real output on 2026-08-22, not inferred.",
       "pricing": "PAY_PER_EVENT with two events. 'post' costs $0.0017 on FREE down to $0.0004 on DIAMOND. 'post-details' adds $0.0010 on FREE and is what dataDetailLevel 'detailedData' turns on. minimalMaxTotalChargeUsd $0.005. At 25 posts with basicData: about $0.043 per refresh on FREE.",
       "health": "47,686,395 total runs; rebuilt 2026-08-21; 30 days: 5,942,163 of 5,951,758 succeeded (99.84%), only 177 hard failures. Apify flags it isCritical.",
       "config_template": {
@@ -410,7 +410,7 @@
         "About $0.043 per refresh at 25 posts on the free tier.",
         "username MUST be an array. {\"username\": \"natgeo\"} is rejected by input validation.",
         "dataDetailLevel's schema default is the EXPENSIVE one (detailedData). Always write basicData explicitly.",
-        "UNVERIFIED: that basicData still emits caption, timestamp, url and id. The inference is strong but untested. If the first run returns empty text or no dates, switch to detailedData; the key overrides stay identical either way.",
+        "VERIFIED 2026-08-22 by a real run: basicData does emit caption, timestamp, url and id. Five natgeo posts produced five distinct /p/ permalinks, five distinct guids and five real post dates spanning 25 hours, so nothing fell back to build time. No keys change needed.",
         "skipPinnedPosts is true on purpose. Pinned posts can be years old but always sort first, so they would eat the limit and surface as bogus new items on the first build.",
         "Every dataset field is nullable, and failed items arrive carrying 'error' instead of post fields. A private, renamed or deleted profile produces contentless items rather than a run failure.",
         "Reels are included as type Video with productType 'clips' and cannot be excluded."

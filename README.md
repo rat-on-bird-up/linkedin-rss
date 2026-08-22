@@ -6,6 +6,18 @@ Readwise Reader. One feed per source, each independent of the others.
 Live feeds are listed at
 https://rat-on-bird-up.github.io/linkedin-rss/
 
+The repo name is historical. This is not LinkedIn-specific and never was: a
+source names an actor and an input, and LinkedIn is simply the first one that
+got a config. `recipes.json` carries verified recipes for LinkedIn profiles,
+LinkedIn company pages, X, Instagram and TikTok, plus the procedure for
+qualifying a new actor for anything else.
+
+It is also not the answer for most sites. YouTube, Reddit, Substack, Medium,
+GitHub, Mastodon, Bluesky and every WordPress or Ghost blog publish RSS
+themselves, free and instantly, and `recipes.json` lists those templates so the
+free path gets checked first. This repo is for the handful of platforms that
+deliberately withhold a feed.
+
 ## How it works
 
 Each source is a JSON file in `sources/`. A weekly GitHub Action calls that
@@ -49,6 +61,23 @@ Changing the schedule or the triggers needs a real checkout.
 
 `title`, `actor` and `input` are required, plus whichever field in `input` caps
 the result count. Everything else has a default.
+
+## From a phone
+
+Paste a link into Claude and ask for a feed. It reads `recipes.json`, works out
+whether the platform already has a free feed, and if not writes the source file
+through the GitHub connector. The push triggers the build and the feed is live a
+few minutes later.
+
+`skill/SKILL.md` is what makes Claude reach for this without being told how.
+Upload it once at claude.ai ➔ Settings ➔ Capabilities ➔ Skills, and it is then
+available on every device including mobile. `url-to-feed-skill.zip` in
+Downloads is the same file packaged for that upload.
+
+The whole path was verified end to end on 22 August 2026: a write through the
+REST contents API fires the push trigger, the build rebuilds only that source
+and leaves the others untouched, a malformed source fails loudly without
+spending anything, and deleting a source file leaves the run green.
 
 | Field | Default | What it does |
 |---|---|---|
