@@ -1,12 +1,18 @@
 ---
 name: url-to-feed
-description: Turns a pasted URL into an RSS feed Guilherme can subscribe to in Readwise Reader, using the rat-on-bird-up/linkedin-rss repo through the GitHub connector. Use whenever he shares a link to a person, company, channel, blog or account and wants to follow it, or says any of "make this a feed", "turn this into RSS", "feed this", "can I follow this", "add this to my reader", "RSS for this", "subscribe me to this", or pastes a profile URL with little other context. Also use when he asks what feeds exist, wants one paused or removed, or asks why a feed has gone quiet. Free native feeds are always preferred over paid scraping, and this skill knows which platforms have one. When in doubt, apply it — better to use it unnecessarily than to miss the moment.
+description: Turns a pasted link into an RSS feed URL. Use when Guilherme shares a link he wants to follow, says "make this a feed", "turn this into RSS" or "can I follow this", or asks about his feeds.
 ---
 
 # URL ➔ RSS feed
 
 Guilherme pastes a link. He gets back a feed URL to paste into Readwise Reader.
 Everything else is your problem, not his.
+
+claude.ai caps the description above at 200 characters, so the full trigger list
+lives here instead. Also apply this skill when he says "feed this", "add this to
+my reader", "RSS for this" or "subscribe me to this", when he pastes a profile
+URL with little other context, and when he asks what feeds he has, wants one
+paused or removed, or asks why a feed has gone quiet.
 
 ## The two-tier answer
 

@@ -70,9 +70,18 @@ through the GitHub connector. The push triggers the build and the feed is live a
 few minutes later.
 
 `skill/SKILL.md` is what makes Claude reach for this without being told how.
-Upload it once at claude.ai ➔ Settings ➔ Capabilities ➔ Skills, and it is then
-available on every device including mobile. `url-to-feed-skill.zip` in
-Downloads is the same file packaged for that upload.
+Upload it once on the web at claude.ai ➔ Customize ➔ Skills ➔ + ➔ Create skill
+➔ Upload a skill, and it is then available everywhere, phone included. Skills
+need "Code execution and file creation" switched on first, under Settings ➔
+Capabilities. `url-to-feed-skill.zip` in Downloads is the packaged upload.
+
+Two constraints that are easy to trip over when editing the skill. The
+`description` in the frontmatter is capped at 200 characters, which is far
+shorter than the descriptions on locally-installed skills, so the full trigger
+list lives in the body instead. And the zip must hold the skill folder at its
+root with forward-slash paths — PowerShell's `Compress-Archive` writes Windows
+backslashes, which extractors read as one oddly-named file, so repackage with
+`zipfile` in Python rather than `Compress-Archive`.
 
 The whole path was verified end to end on 22 August 2026: a write through the
 REST contents API fires the push trigger, the build rebuilds only that source
