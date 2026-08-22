@@ -75,10 +75,11 @@ almost six minutes per deploy and intermittently failed outright when two
 pushes landed close together.
 
 `skill/SKILL.md` is what makes Claude reach for this without being told how.
-Upload it once on the web at claude.ai ➔ Customize ➔ Skills ➔ + ➔ Create skill
-➔ Upload a skill, and it is then available everywhere, phone included. Skills
-need "Code execution and file creation" switched on first, under Settings ➔
-Capabilities. `url-to-feed-skill.zip` in Downloads is the packaged upload.
+It is installed on the account as of 22 August 2026, so it already works on
+the phone. To replace it after an edit, repackage `skill/SKILL.md` and upload it
+at claude.ai ➔ Customize ➔ Skills ➔ Add ➔ Upload a skill. Skills need "Code
+execution and file creation" switched on under Settings ➔ Capabilities, and the
+GitHub connector has to be connected or the skill has nothing to write with.
 
 Two constraints that are easy to trip over when editing the skill. The
 `description` in the frontmatter is capped at 200 characters, which is far
