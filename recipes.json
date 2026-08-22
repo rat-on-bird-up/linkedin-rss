@@ -1,0 +1,688 @@
+{
+  "version": 1,
+  "generated": "2026-08-22",
+  "_what_this_is": "Lookup table for turning a URL someone pasted into a feed. Built to be used by a Claude with nothing but the GitHub contents API: read this file, match the URL, substitute the captured id into a template, write sources/<slug>.json, report the feed URL. No code execution required. Every actor under 'recipes' was confirmed to exist and to have a working result cap on 2026-08-22 by reading its latest build. Anything not confirmed is under 'needs_checking' or 'disqualified' and must not be written into a config without checking it first.",
+
+  "repo": {
+    "github": "rat-on-bird-up/linkedin-rss",
+    "sources_dir": "sources",
+    "output_dir": "docs",
+    "feed_url_template": "https://rat-on-bird-up.github.io/linkedin-rss/$SLUG.xml",
+    "index_url": "https://rat-on-bird-up.github.io/linkedin-rss/",
+    "note": "sources/<slug>.json builds docs/<slug>.xml, served at /linkedin-rss/<slug>.xml. The builder runs weekly and on any push touching sources/, so writing the file is the whole job. The feed 404s until the next build finishes, a few minutes after the push."
+  },
+
+  "decision_procedure": [
+    "1. Take the URL the user pasted. Drop obvious tracking query params, keep the path.",
+    "2. FIRST check 'native_rss'. If the URL matches a platform there, do NOT write a source file and do NOT propose an actor. Build the native feed URL, hand it over, and tell the user to subscribe directly. It is free, instant, and costs no Apify credit. This check comes first on purpose: routing a native-RSS platform through Apify burns money for nothing.",
+    "3. Otherwise walk 'recipes' in order and take the FIRST whose 'match' regex hits. The list is already ordered so narrower patterns come before broader ones.",
+    "4. Take capture group 1 as the id. Substitute it for $1 everywhere in 'config_template'.",
+    "5. Derive the slug from 'slug_template' and apply 'rules.slug_transform'. Check sources/<slug>.json does not already exist (GET it; 404 means free). If it exists, pick another slug rather than overwriting a live feed.",
+    "6. Confirm the actor still exists: GET https://api.apify.com/v2/acts/<owner>~<name> and require HTTP 200. If you cannot make that request, say so and ask the user to confirm before writing anything.",
+    "7. Write sources/<slug>.json via the GitHub contents API. Commit message: 'add <slug> feed source'.",
+    "8. Tell the user the feed URL from repo.feed_url_template, and pass on the recipe's 'user_notes', cost per refresh first.",
+    "9. If nothing matches, follow 'fallback'. Never invent an actor name."
+  ],
+
+  "rules": {
+    "slug_charset": "^[a-z0-9][a-z0-9-]{0,63}$",
+    "slug_transform": "Lowercase the captured id, replace every character outside [a-z0-9] with '-', collapse runs of '-' into one, strip leading and trailing '-', truncate to 64 characters. Underscores and dots are common in Instagram, TikTok and X handles and MUST be converted, or the builder rejects the file. Apply this to the SLUG ONLY: the raw untransformed capture goes into 'input', because that is the real account name.",
+    "filename_is_permanent": "The filename stem IS the feed URL. sources/foo.json serves docs/foo.xml forever. Renaming a source file moves the feed and orphans every existing subscriber. Choose the slug once, carefully, and never rename it. If a title or link is wrong, edit those fields; never rename the file to fix cosmetics.",
+    "limit_must_be_present_and_small": "input[limit_field] must be an integer from 1 to 100, or the builder refuses the file. Billing is per result, so this field is the only thing between a weekly feed and a drained account. 25 is the house default. Never omit it and never lean on an actor's own default: several actors here default to 100, and the Instagram one treats a missing limit as unlimited.",
+    "never_put_credentials_in_a_config": "sources/*.json is world-readable in a PUBLIC repo. No cookie, li_at, sessionid, session token, password, API key or Apify token may ever appear in one. Any actor whose input schema requires such a field is disqualified outright. The Apify token lives only in the CI secret. The builder actively scans configs for apify_api_* strings.",
+    "confirm_the_actor_exists_before_writing": "GET https://api.apify.com/v2/acts/<owner>~<name> must return 200 before you write a file naming that actor. A 404 means it was renamed or deleted, and a config pointing at a dead actor fails silently every week. This applies to the recipes below too: they were true on 2026-08-22, not necessarily today.",
+    "config_schema": {
+      "version": "must be exactly 1",
+      "title": "required, non-empty string, shown as the feed title in the reader",
+      "actor": "required, must match ^[A-Za-z0-9._-]+~[A-Za-z0-9._-]+$ (owner~name, tilde not slash)",
+      "input": "required, non-empty object, passed to the actor verbatim",
+      "limit_field": "optional, defaults to 'limit'. Names the key inside input that caps results.",
+      "max_items": "optional integer >= 1, default 60. How many items the feed keeps in its archive.",
+      "timeout": "optional integer 10-600 seconds, default 300",
+      "max_charge_usd": "optional number > 0 and <= 5, default 0.50. Per source per run, enforced by Apify itself.",
+      "enabled": "optional boolean, default true. Set false to pause a feed without deleting it.",
+      "link": "optional http or https URL, the human page the feed represents",
+      "description": "optional string",
+      "keys": "optional object; only the five names id, title, text, url, date are accepted",
+      "_anything": "any key starting with an underscore is ignored, which is how you write comments in JSON"
+    },
+    "default_key_chains": {
+      "_note": "Tried in order, first hit wins. A 'keys' override REPLACES the whole chain for that field, so write the full replacement list, not just the extra entry. Only override where the default genuinely misses; a needless override can break a chain that already worked.",
+      "id": ["urn", "full_urn", "postUrn", "post_urn", "id", "postId", "activityUrn"],
+      "title": [],
+      "text": ["text", "postText", "content", "post_text", "description"],
+      "url": ["url", "postUrl", "post_url", "link", "postLink"],
+      "date": ["postedAtISO", "posted_at.date", "posted_at", "postedAt", "publishedAt", "date", "time"]
+    },
+    "empty_title_chain_is_deliberate": "title defaults to an empty chain, which tells the builder to cut a title from the first 90 characters of the text. That is right for every social platform here: posts, tweets and captions have no title. Do not add a title override to a social recipe.",
+    "a_missing_date_fails_silently": "This is the failure mode to fear. If the date chain misses, the builder does not error. It stamps each item with the build time, so the feed re-dates itself on every run and old posts resurface as new for every subscriber. Check the date mapping harder than the other four.",
+    "one_account_per_file": "Every actor here caps results PER PROFILE, not per run. Two accounts in one input doubles the bill and makes the cap arithmetic non-obvious. One account per source file.",
+    "readmes_lie": "Read the input schema from the actor's latest BUILD, never from its README. Confirmed cases: apimaestro~linkedin-profile-posts' README shows a {\"data\":{\"posts\":[...]}} envelope while the real dataset is flat, one item per post; apidojo~twitter-scraper-lite's README documents input fields (tweetLanguage, onlyVerifiedUsers, customMapFunction) absent from its schema; patient_discovery~twitter-user-tweets' README documents a maxResults cap that does not exist at all, which would produce an uncapped billed run."
+  },
+
+  "native_rss": {
+    "_use_this_first": "Every platform in this section publishes RSS or Atom itself, free, with no key and no per-result billing. If a pasted URL matches here, hand the user the feed URL and stop. Do not write a source file. Do not propose an actor. All templates below were fetched and confirmed on 2026-08-22 unless marked otherwise.",
+    "verify_before_reporting": "Fetch the URL you built and FOLLOW REDIRECTS. Bluesky redirects handle to DID and GitHub redirects renamed repos, so a bare 301 or 302 is not a failure. Then check the content-type is xml, rss or atom, not text/html. A 200 alone proves nothing: blog.medium.com/feed returns 200 with an HTML page.",
+    "autodiscovery_shortcut": {
+      "how": "Fetch the page and take the href from <link rel=\"alternate\" type=\"application/rss+xml\"> verbatim.",
+      "when": "Any site not in the table below. WordPress, Ghost, Substack, Blogger, Tumblr and YouTube all advertise their own feed this way. Try this before giving up on a blog."
+    },
+    "platforms": [
+      {
+        "id": "youtube",
+        "name": "YouTube channel",
+        "match": "^https?://(?:www\\.)?youtube\\.com/(?:channel/(UC[\\w-]{22})|@[\\w.-]+|c/[\\w-]+|user/[\\w-]+)",
+        "templates": {
+          "channel": "https://www.youtube.com/feeds/videos.xml?channel_id=$CHANNEL_ID",
+          "playlist": "https://www.youtube.com/feeds/videos.xml?playlist_id=$PLAYLIST_ID",
+          "legacy_user": "https://www.youtube.com/feeds/videos.xml?user=$LEGACY_USERNAME"
+        },
+        "id_from": "A /channel/UC... URL already contains the id. For /@handle, /c/name or /user/name, fetch the page with a real browser User-Agent and read the href out of <link rel=\"alternate\" type=\"application/rss+xml\">, which is the finished feed URL. Fallback: rel=\"canonical\" gives /channel/UC...",
+        "trap": "NEVER grep the first \"channelId\":\"UC...\" out of the page HTML. It is a RECOMMENDED channel, not the page's own. Verified: @veritasium yields UCin0m13qWv3-051xlWlHamA (Veritasium en Francais) and @LinusTechTips yields UCdBK94H6oZT2Q7l0-b0xmMg. Both wrong.",
+        "notes": "15 most recent videos. Includes Shorts and ended livestreams, with no field to tell them apart."
+      },
+      {
+        "id": "reddit",
+        "name": "Reddit subreddit or user",
+        "match": "^https?://(?:www\\.|old\\.)?reddit\\.com/(?:r/([A-Za-z0-9_]+)|u(?:ser)?/([A-Za-z0-9_-]+))",
+        "templates": {
+          "subreddit_new": "https://www.reddit.com/r/$SUB/new/.rss",
+          "subreddit_hot": "https://www.reddit.com/r/$SUB/.rss",
+          "subreddit_top": "https://www.reddit.com/r/$SUB/top/.rss?t=week",
+          "multi_subreddit": "https://www.reddit.com/r/$SUB_A+$SUB_B/.rss",
+          "user_all": "https://www.reddit.com/user/$USER/.rss",
+          "user_submissions": "https://www.reddit.com/user/$USER/submitted/.rss",
+          "user_comments": "https://www.reddit.com/user/$USER/comments/.rss",
+          "search": "https://www.reddit.com/r/$SUB/search.rss?q=$QUERY&restrict_sr=1&sort=new"
+        },
+        "notes": "Prefer /new/.rss for a feed. Plain /.rss is 'hot' and reorders constantly. Atom format.",
+        "traps": [
+          "Use www.reddit.com. old.reddit.com/r/<sub>/.rss returns 200 with content-type text/html and no feed.",
+          "Reddit rate-limits hard. A 429 is throttling, not a dead feed. Poll no more than every 10-15 minutes and send a distinctive User-Agent.",
+          "The top, multi-subreddit, comments and search variants were not confirmed on 2026-08-22 (429 throttling only, not a 404). They are long-standing endpoints, not disproven."
+        ]
+      },
+      {
+        "id": "substack",
+        "name": "Substack newsletter",
+        "match": "^https?://([\\w-]+)\\.substack\\.com",
+        "templates": {
+          "subdomain": "https://$NAME.substack.com/feed",
+          "custom_domain": "https://$DOMAIN/feed"
+        },
+        "notes": "Many Substacks live on custom domains, so always try <domain>/feed too. Paywalled posts appear as teasers; a scraper without a subscription gets the same teaser, so this is not a reason to reach for Apify."
+      },
+      {
+        "id": "medium",
+        "name": "Medium user, publication or tag",
+        "match": "^https?://medium\\.com/(?:@([\\w.-]+)|([\\w-]+))",
+        "templates": {
+          "user": "https://medium.com/feed/@$USERNAME",
+          "publication": "https://medium.com/feed/$PUBLICATION_SLUG",
+          "tag": "https://medium.com/feed/tag/$TAG",
+          "custom_domain": "https://$DOMAIN/feed"
+        },
+        "notes": "Test the user pattern before the publication pattern, or the broader one swallows the narrower.",
+        "traps": ["blog.medium.com/feed returns 200 with content-type text/html and is NOT a feed. Check the content-type, not the status code."]
+      },
+      {
+        "id": "github",
+        "name": "GitHub repo or user",
+        "match": "^https?://github\\.com/([\\w.-]+)(?:/([\\w.-]+))?",
+        "templates": {
+          "releases": "https://github.com/$OWNER/$REPO/releases.atom",
+          "tags": "https://github.com/$OWNER/$REPO/tags.atom",
+          "commits": "https://github.com/$OWNER/$REPO/commits/$BRANCH.atom",
+          "commits_path": "https://github.com/$OWNER/$REPO/commits/$BRANCH/$PATH.atom",
+          "user_activity": "https://github.com/$USERNAME.atom",
+          "wiki": "https://github.com/$OWNER/$REPO/wiki.atom"
+        },
+        "id_from": "commits.atom needs the real default branch (main vs master). Read .default_branch from https://api.github.com/repos/$OWNER/$REPO rather than guessing. A wrong branch is a silent 404.",
+        "traps": [
+          "There is NO per-tag feed: /releases/tag/<tag>.atom returns 404. Confirmed.",
+          "Renamed repos redirect (facebook/react now serves react/react), so follow redirects.",
+          "Very large user activity feeds intermittently 502. Retry before declaring a source dead.",
+          "releases.atom includes pre-releases with no flag to separate them; tags.atom is noisier still, every RC included.",
+          "Public repos only. Private repos need a per-user token feed, which must never go in a public config."
+        ]
+      },
+      {
+        "id": "mastodon",
+        "name": "Mastodon, Pleroma or Akkoma account",
+        "match": "^https?://([\\w.-]+)/@([\\w]+)(?:@[\\w.-]+)?/?$",
+        "templates": {
+          "user": "https://$INSTANCE/@$USER.rss",
+          "user_with_replies": "https://$INSTANCE/@$USER/with_replies.rss",
+          "user_tagged": "https://$INSTANCE/@$USER/tagged/$TAG.rss",
+          "instance_hashtag": "https://$INSTANCE/tags/$TAG.rss"
+        },
+        "id_from": "For an address like @user@instance.tld, the instance is the part after the SECOND @, so the feed is https://instance.tld/@user.rss.",
+        "notes": "Works on any Mastodon instance: this is core Mastodon, not mastodon.social-specific. Public posts only, so unlisted and followers-only never appear. Microblog, so there is no per-post title and a reader will cut one from the text."
+      },
+      {
+        "id": "bluesky",
+        "name": "Bluesky profile",
+        "match": "^https?://bsky\\.app/profile/([\\w.:-]+)",
+        "templates": {
+          "by_handle": "https://bsky.app/profile/$HANDLE/rss",
+          "by_did": "https://bsky.app/profile/$DID/rss",
+          "public_json_api": "https://public.api.bsky.app/xrpc/app.bsky.feed.getAuthorFeed?actor=$HANDLE&limit=$N"
+        },
+        "id_from": "Resolve a handle to a DID via https://public.api.bsky.app/xrpc/com.atproto.identity.resolveHandle?handle=$HANDLE and store the DID form. Handles can be changed by their owner and will break a handle-based URL; the handle URL redirects to the DID one anyway.",
+        "traps": [
+          "Custom feeds and lists have NO RSS: /profile/<h>/feed/<name>/rss returns 404. Author profiles only.",
+          "pubDate omits the day-of-week ('19 Aug 2026 16:54 +0000'), which strict RFC-822 parsers reject.",
+          "Reposts and quote posts degrade to the literal text '[contains quote post or other embedded content]'."
+        ]
+      },
+      {
+        "id": "tumblr",
+        "name": "Tumblr blog",
+        "match": "^https?://([\\w-]+)\\.tumblr\\.com",
+        "templates": {
+          "blog": "https://$BLOG.tumblr.com/rss",
+          "tagged": "https://$BLOG.tumblr.com/tagged/$TAG/rss",
+          "custom_domain": "https://$DOMAIN/rss"
+        }
+      },
+      {
+        "id": "wordpress",
+        "name": "WordPress site, self-hosted or .com",
+        "match": null,
+        "match_note": "No reliable URL pattern. Detect by trying the template, or by autodiscovery.",
+        "templates": {
+          "posts": "https://$SITE/feed/",
+          "comments": "https://$SITE/comments/feed/",
+          "category": "https://$SITE/category/$CAT/feed/",
+          "tag": "https://$SITE/tag/$TAG/feed/",
+          "author": "https://$SITE/author/$NAME/feed/",
+          "fallback_permalinks": "https://$SITE/?feed=rss2",
+          "wpcom_json_api": "https://public-api.wordpress.com/rest/v1.1/sites/$SITE/posts/?number=$N"
+        },
+        "notes": "If /feed/ 404s the site uses non-default permalinks; fall back to ?feed=rss2."
+      },
+      {
+        "id": "blogger",
+        "name": "Blogger / Blogspot",
+        "match": "^https?://([\\w-]+)\\.blogspot\\.com",
+        "templates": {
+          "atom": "https://$BLOG.blogspot.com/feeds/posts/default",
+          "rss": "https://$BLOG.blogspot.com/feeds/posts/default?alt=rss",
+          "by_label": "https://$BLOG.blogspot.com/feeds/posts/default/-/$LABEL",
+          "comments": "https://$BLOG.blogspot.com/feeds/comments/default"
+        },
+        "notes": "Default page size 25; add &max-results=$N. Labels are case-sensitive. Custom-domain Blogger blogs use the same path."
+      },
+      {
+        "id": "ghost",
+        "name": "Ghost blog",
+        "match": null,
+        "templates": { "posts": "https://$SITE/rss/" }
+      },
+      {
+        "id": "lemmy",
+        "name": "Lemmy community",
+        "match": "^https?://([\\w.-]+)/c/([\\w]+)",
+        "templates": { "community": "https://$INSTANCE/feeds/c/$COMMUNITY.xml" }
+      },
+      {
+        "id": "hackernews",
+        "name": "Hacker News",
+        "match": "^https?://news\\.ycombinator\\.com",
+        "templates": {
+          "front_page_official": "https://news.ycombinator.com/rss",
+          "third_party_frontpage": "https://hnrss.org/frontpage",
+          "third_party_search": "https://hnrss.org/newest?q=$QUERY",
+          "third_party_user": "https://hnrss.org/user?id=$USER",
+          "official_json_api": "https://hacker-news.firebaseio.com/v0/topstories.json"
+        },
+        "traps": ["Only news.ycombinator.com/rss is official. hnrss.org is a volunteer service and was returning 502 on its search and user endpoints on 2026-08-22. Do not build a hard dependency on it."]
+      },
+      {
+        "id": "arxiv",
+        "name": "arXiv category",
+        "match": "^https?://arxiv\\.org/list/([\\w-]+\\.[\\w-]+)",
+        "templates": {
+          "rss": "https://rss.arxiv.org/rss/$CATEGORY",
+          "atom": "https://rss.arxiv.org/atom/$CATEGORY",
+          "multi_category": "https://rss.arxiv.org/rss/$CAT_A+$CAT_B",
+          "query_api": "http://export.arxiv.org/api/query?search_query=cat:$CATEGORY&sortBy=submittedDate&sortOrder=descending&max_results=$N"
+        },
+        "traps": [
+          "The category RSS is a DAILY-REPLACED announcement feed, not a rolling window of the last N papers. It holds only that day's announcements and is EMPTY at weekends: the channel declares <skipDays>Saturday, Sunday</skipDays>.",
+          "A poller running less often than daily WILL permanently miss papers. Use the query API if you need a backfill-safe window.",
+          "Zero items on a Saturday is normal. Do not auto-disable the source."
+        ]
+      },
+      {
+        "id": "stackexchange",
+        "name": "Stack Overflow or any Stack Exchange site",
+        "match": "^https?://(?:stackoverflow\\.com|[\\w-]+\\.stackexchange\\.com)/",
+        "templates": {
+          "tag": "https://stackoverflow.com/feeds/tag/$TAG",
+          "question": "https://stackoverflow.com/feeds/question/$ID",
+          "other_se_site": "https://$SITE.stackexchange.com/feeds/tag/$TAG"
+        }
+      },
+      {
+        "id": "pypi",
+        "name": "PyPI package releases",
+        "match": "^https?://pypi\\.org/project/([\\w.-]+)",
+        "templates": {
+          "project": "https://pypi.org/rss/project/$PACKAGE/releases.xml",
+          "all_updates": "https://pypi.org/rss/updates.xml"
+        }
+      },
+      {
+        "id": "googlenews",
+        "name": "Google News keyword search (brand monitoring)",
+        "match": null,
+        "templates": { "search": "https://news.google.com/rss/search?q=$QUERY&hl=en-US&gl=US&ceid=US:en" },
+        "notes": "Free and keyless. The best available substitute when someone wants to follow a company that has no feed of its own."
+      },
+      {
+        "id": "vimeo",
+        "name": "Vimeo channel",
+        "match": "^https?://vimeo\\.com/channels/([\\w-]+)",
+        "templates": { "channel": "https://vimeo.com/channels/$CHANNEL/videos/rss" }
+      }
+    ],
+    "confirmed_absent": [
+      "GitHub per-release-tag atom (/releases/tag/<tag>.atom) returns 404.",
+      "Bluesky custom feeds and lists (/profile/<h>/feed/<name>/rss) return 404. Author profiles only.",
+      "Flickr photos_public.gne was NOT confirmed (404 with a test NSID that was almost certainly invalid). The template is documented and long-standing; verify with a real NSID before offering it."
+    ],
+    "no_native_rss_use_an_actor": {
+      "_note": "Probed on 2026-08-22 and confirmed to serve HTML or an anti-bot error rather than a feed. These are the only platforms that justify spending Apify credit.",
+      "covered_by_recipes": ["X / Twitter", "Instagram", "TikTok", "LinkedIn profiles", "LinkedIn company pages"],
+      "no_recipe_yet": ["Threads (threads.net/@user/rss returns 404)", "Facebook", "Twitch", "Patreon posts", "Discord", "Telegram channels (t.me/s/<channel> is HTML, no feed)"]
+    }
+  },
+
+  "recipes": [
+    {
+      "id": "linkedin-profile",
+      "name": "LinkedIn - personal profile posts",
+      "match": "^(?:https?://)?(?:[a-z0-9-]+\\.)?linkedin\\.com/in/([^/?#]+)",
+      "match_flags": "i",
+      "capture": "1 = the profile vanity slug, e.g. 'bradhaft' from linkedin.com/in/bradhaft/. Country subdomains like nl.linkedin.com match too.",
+      "actor": "apimaestro~linkedin-profile-posts",
+      "actor_verified": "2026-08-22, HTTP 200, latest build cBnwV89so6fUIcB9P",
+      "input_template": { "username": "$1", "page_number": 1, "limit": 25 },
+      "limit_field": "limit",
+      "limit_notes": "Integer, schema default 100, schema MAXIMUM 100. Always write it explicitly: omitting it bills 100 results per run.",
+      "title_template": "$1 - LinkedIn posts",
+      "link_template": "https://www.linkedin.com/in/$1/",
+      "slug_template": "linkedin-$1",
+      "keys": null,
+      "keys_reasoning": "No override needed. id resolves to urn, text to text, url to url, and date to posted_at.date, all on the default chains. title is deliberately left empty so it is cut from the text.",
+      "pricing": "PAY_PER_EVENT, $0.005 per result (event 'apify-default-dataset-item'). At limit 25 that is $0.125 per refresh.",
+      "health": "12,418,338 total runs; modified 2026-08-12; 30 days: 1,188,515 of 1,211,562 succeeded, 1.86% failed.",
+      "config_template": {
+        "_comment": "LinkedIn personal profile posts. limit caps billed results and must stay small.",
+        "version": 1,
+        "title": "$1 - LinkedIn posts",
+        "link": "https://www.linkedin.com/in/$1/",
+        "description": "Public LinkedIn posts from $1, rebuilt weekly as RSS.",
+        "actor": "apimaestro~linkedin-profile-posts",
+        "input": { "username": "$1", "page_number": 1, "limit": 25 },
+        "limit_field": "limit",
+        "max_items": 60
+      },
+      "user_notes": [
+        "$0.125 per refresh at limit 25.",
+        "This is the actor the existing sources/feed.json already uses, so it is the best-proven recipe in this file.",
+        "The README shows a {\"data\":{\"posts\":[...]}} envelope. That is WRONG; the real dataset is flat, one item per post. Ignore the README.",
+        "Keep page_number at 1. Incrementing it walks backwards into history and republishes old posts as new.",
+        "A bare reshare with no added commentary has empty text, which yields both an empty title and an empty description. Expect occasional blank entries."
+      ]
+    },
+    {
+      "id": "linkedin-company",
+      "name": "LinkedIn - company page posts",
+      "match": "^(?:https?://)?(?:[a-z0-9-]+\\.)?linkedin\\.com/company/([^/?#]+)",
+      "match_flags": "i",
+      "capture": "1 = the company vanity slug, e.g. 'dsm-firmenich'. Correctly rejects /in/ profiles and /showcase/ pages.",
+      "actor": "apimaestro~linkedin-company-posts",
+      "actor_verified": "2026-08-22, HTTP 200, latest build XUQMndiOVcE5aSFGj (0.1.52)",
+      "input_template": { "company_name": "$1", "page_number": 1, "limit": 25, "sort": "recent" },
+      "limit_field": "limit",
+      "limit_notes": "Integer, schema default 100, schema MAXIMUM 100. Omitting it bills 100 results per run.",
+      "title_template": "$1 - LinkedIn company posts",
+      "link_template": "https://www.linkedin.com/company/$1/",
+      "slug_template": "linkedin-$1",
+      "keys": null,
+      "keys_reasoning": "No override needed on the documented shape: id to urn, text to text, url to url, date to posted_at.date. See user_notes for the conditional date fix.",
+      "pricing": "PAY_PER_EVENT, $0.005 per result. At limit 25 that is $0.125 per refresh.",
+      "health": "4,302,903 total runs; modified 2026-08-10; 30 days: 317,458 of 335,720 succeeded, 5.43% failed.",
+      "config_template": {
+        "_comment": "LinkedIn company page posts. sort is pinned to 'recent' so a future change to the actor's default cannot reorder the feed.",
+        "version": 1,
+        "title": "$1 - LinkedIn company posts",
+        "link": "https://www.linkedin.com/company/$1/",
+        "description": "Public posts from the $1 LinkedIn company page.",
+        "actor": "apimaestro~linkedin-company-posts",
+        "input": { "company_name": "$1", "page_number": 1, "limit": 25, "sort": "recent" },
+        "limit_field": "limit",
+        "max_items": 60
+      },
+      "user_notes": [
+        "$0.125 per refresh at limit 25. Company pages post far less often than people do, so limit 10 ($0.05) is usually plenty.",
+        "sort is pinned to 'recent' on purpose. 'top' is relevance-ranked and would churn item order on every poll.",
+        "Output shape is INFERRED from the sibling profile actor, not observed: this actor documents no output sample. Check the first build before adding many company feeds.",
+        "If dates come out wrong, posted_at.date is space-separated and not ISO ('2025-05-15 14:30:20'). The narrow fix is \"keys\": {\"date\": [\"posted_at.timestamp\"]}, which is epoch milliseconds.",
+        "5.4% of runs fail. Treat one failed run as transient, not as a broken feed.",
+        "Company pages reshare a lot, and a bare reshare has empty text, so expect some blank entries.",
+        "The URL pattern also captures numeric ids (linkedin.com/company/1234567). It is unverified whether a numeric id resolves; prefer the human-readable vanity slug."
+      ]
+    },
+    {
+      "id": "instagram",
+      "name": "Instagram - profile posts",
+      "match": "^(?:https?://)?(?:www\\.)?instagram\\.com/(?!p/|reel/|reels/|tv/|stories/|explore/|accounts/)([A-Za-z0-9._]{1,30})/?(?:[?#].*)?$",
+      "match_flags": "i",
+      "capture": "1 = the username. The negative lookahead stops post, reel and story permalinks being mistaken for profiles.",
+      "actor": "apify~instagram-post-scraper",
+      "actor_verified": "2026-08-22, HTTP 200, latest build bgjIwVT6vPbcxmqfu (0.0.573)",
+      "input_template": { "username": ["$1"], "resultsLimit": 25, "dataDetailLevel": "basicData", "skipPinnedPosts": true },
+      "limit_field": "resultsLimit",
+      "limit_notes": "CRITICAL: resultsLimit is NOT in the schema's required list and has NO default, only prefill 20. The actor's own memory expression reads get(input,'resultsLimit',999999999), so a missing limit means effectively unlimited, billed per result. It must always be present.",
+      "title_template": "$1 - Instagram posts",
+      "link_template": "https://www.instagram.com/$1/",
+      "slug_template": "instagram-$1",
+      "keys": { "text": ["caption", "alt"], "date": ["timestamp"] },
+      "keys_reasoning": "text: the caption field is named 'caption', which appears in none of the default chain entries, so text would be empty on every item. 'alt' is a fallback for image-only posts where caption is null. date: the field is 'timestamp' (ISO with milliseconds and Z), not in the default chain, and a date miss fails silently. id ('id', fifth in the chain) and url ('url', first) both hit the defaults.",
+      "pricing": "PAY_PER_EVENT with two events. 'post' costs $0.0017 on FREE down to $0.0004 on DIAMOND. 'post-details' adds $0.0010 on FREE and is what dataDetailLevel 'detailedData' turns on. minimalMaxTotalChargeUsd $0.005. At 25 posts with basicData: about $0.043 per refresh on FREE.",
+      "health": "47,686,395 total runs; rebuilt 2026-08-21; 30 days: 5,942,163 of 5,951,758 succeeded (99.84%), only 177 hard failures. Apify flags it isCritical.",
+      "config_template": {
+        "_comment": "Instagram profile posts. username is an ARRAY. resultsLimit has no default in the schema, so omitting it means unlimited and billed per post. dataDetailLevel is pinned to basicData because the schema default (detailedData) costs about 60% more for metadata a feed never uses.",
+        "version": 1,
+        "title": "$1 - Instagram posts",
+        "link": "https://www.instagram.com/$1/",
+        "description": "Latest public Instagram posts from @$1.",
+        "actor": "apify~instagram-post-scraper",
+        "input": { "username": ["$1"], "resultsLimit": 25, "dataDetailLevel": "basicData", "skipPinnedPosts": true },
+        "limit_field": "resultsLimit",
+        "max_items": 60,
+        "keys": { "text": ["caption", "alt"], "date": ["timestamp"] }
+      },
+      "user_notes": [
+        "About $0.043 per refresh at 25 posts on the free tier.",
+        "username MUST be an array. {\"username\": \"natgeo\"} is rejected by input validation.",
+        "dataDetailLevel's schema default is the EXPENSIVE one (detailedData). Always write basicData explicitly.",
+        "UNVERIFIED: that basicData still emits caption, timestamp, url and id. The inference is strong but untested. If the first run returns empty text or no dates, switch to detailedData; the key overrides stay identical either way.",
+        "skipPinnedPosts is true on purpose. Pinned posts can be years old but always sort first, so they would eat the limit and surface as bogus new items on the first build.",
+        "Every dataset field is nullable, and failed items arrive carrying 'error' instead of post fields. A private, renamed or deleted profile produces contentless items rather than a run failure.",
+        "Reels are included as type Video with productType 'clips' and cannot be excluded."
+      ]
+    },
+    {
+      "id": "tiktok",
+      "name": "TikTok - profile videos",
+      "match": "^(?:https?://)?(?:www\\.)?tiktok\\.com/@([A-Za-z0-9._]+)",
+      "match_flags": "i",
+      "capture": "1 = the username WITHOUT the leading @. Deep video URLs still yield the profile, which is normally what the user wants. Correctly rejects /tag/ URLs.",
+      "actor": "clockworks~tiktok-profile-scraper",
+      "actor_verified": "2026-08-22, HTTP 200, latest build zQUwOrFiKll0t8mcb (0.0.467)",
+      "input_template": {
+        "profiles": ["$1"],
+        "profileScrapeSections": ["videos"],
+        "profileSorting": "latest",
+        "excludePinnedPosts": true,
+        "resultsPerPage": 25,
+        "shouldDownloadVideos": false,
+        "shouldDownloadCovers": false,
+        "shouldDownloadSlideshowImages": false,
+        "shouldDownloadAvatars": false,
+        "downloadSubtitlesOptions": "NEVER_DOWNLOAD_SUBTITLES"
+      },
+      "limit_field": "resultsPerPage",
+      "limit_notes": "Integer, default 100, no maximum. The cap is PER PROFILE, so total results = resultsPerPage x len(profiles). Keep one profile per file and the arithmetic stays obvious.",
+      "title_template": "$1 - TikTok videos",
+      "link_template": "https://www.tiktok.com/@$1",
+      "slug_template": "tiktok-$1",
+      "keys": { "url": ["webVideoUrl"], "date": ["createTimeISO", "createTime"] },
+      "keys_reasoning": "url: the post URL is 'webVideoUrl'; none of url, postUrl, post_url, link or postLink exists on a real video item. This override also dodges a trap, because error stubs for private profiles DO carry a top-level 'url', so the default chain would match error records only while missing every real item. date: the fields are 'createTimeISO' and 'createTime' (unix seconds), neither in the default chain. id ('id') and text ('text') hit the defaults.",
+      "pricing": "PAY_PER_EVENT, primary event 'result' tiered by plan: FREE $0.003, BRONZE $0.002, SILVER $0.0015, GOLD $0.001, PLATINUM $0.0006, DIAMOND $0.0003. At 25 results that is $0.075 per refresh on FREE. Add-ons (comments $0.00125, followers $0.004, video download $0.0013, transcription $0.048/minute) are all switched off in this template.",
+      "health": "12,377,660 total runs; modified 2026-08-21; 30 days: 2,410,173 of 2,442,354 succeeded, 0.84% failed.",
+      "config_template": {
+        "_comment": "TikTok profile videos. Every paid add-on is pinned to its free value explicitly, so a future change to an actor default cannot silently start charging.",
+        "version": 1,
+        "title": "$1 - TikTok videos",
+        "link": "https://www.tiktok.com/@$1",
+        "description": "Latest TikTok videos from @$1.",
+        "actor": "clockworks~tiktok-profile-scraper",
+        "input": {
+          "profiles": ["$1"],
+          "profileScrapeSections": ["videos"],
+          "profileSorting": "latest",
+          "excludePinnedPosts": true,
+          "resultsPerPage": 25,
+          "shouldDownloadVideos": false,
+          "shouldDownloadCovers": false,
+          "shouldDownloadSlideshowImages": false,
+          "shouldDownloadAvatars": false,
+          "downloadSubtitlesOptions": "NEVER_DOWNLOAD_SUBTITLES"
+        },
+        "limit_field": "resultsPerPage",
+        "max_items": 60,
+        "keys": { "url": ["webVideoUrl"], "date": ["createTimeISO", "createTime"] }
+      },
+      "user_notes": [
+        "$0.075 per refresh at 25 videos on the free tier, the most expensive recipe here. apidojo~tiktok-profile-scraper is 10x cheaper; see needs_checking if cost matters more than reliability.",
+        "excludePinnedPosts is true on purpose. TikTok floats pinned videos to the top regardless of age, so with 'latest' sorting they would resurface as new on every poll.",
+        "Private profiles and deleted posts produce error stubs in the dataset ({\"url\":...,\"error\":\"Profile is private\",\"errorCode\":\"PROFILE_PRIVATE\"}) alongside real items. The url override keeps them from hijacking the link, but a contentless entry can still appear.",
+        "If a live run shows items with no id, change the override to \"id\": [\"id\", \"webVideoUrl\"]. webVideoUrl is unique and stable per post and makes a sound fallback GUID.",
+        "TikTok captions often end in a run of hashtags, so a title cut from the first 90 characters can read as hashtag soup. Cosmetic only.",
+        "Slideshow posts (isSlideshow true) are photo carousels, not videos. They map fine but will appear in the feed.",
+        "Never add commentsPerPost, maxFollowersPerProfile or a transcription option without doing the arithmetic first. Each is separately metered."
+      ]
+    },
+    {
+      "id": "x-twitter",
+      "name": "X / Twitter - user tweets",
+      "match": "^(?:https?://)?(?:www\\.|mobile\\.)?(?:x|twitter)\\.com/(?:#!/)?@?(?!(?:i|home|explore|notifications|messages|search|settings|compose|intent|hashtag)(?:[/?#]|$))([A-Za-z0-9_]{1,15})/?(?:[?#].*)?$",
+      "match_flags": "i",
+      "capture": "1 = the handle without the @. The lookahead excludes reserved paths (/home, /search, /i/...), and the trailing anchor rejects /status/ URLs, which are single tweets rather than profiles.",
+      "actor": "apidojo~twitter-scraper-lite",
+      "actor_verified": "2026-08-22, HTTP 200, latest build fZoT12nW5G8P7Rq0Y",
+      "input_template": { "twitterHandles": ["$1"], "sort": "Latest", "maxItems": 25 },
+      "limit_field": "maxItems",
+      "limit_notes": "CRITICAL: the schema declares NO required array at all, and maxItems has no default, only prefill 1000. The README states plainly that leaving it empty gives unlimited results. It must always be present. The builder sends this value twice, as the actor's own limit and as the maxItems read-back parameter, so it must equal the number of tweets you actually want.",
+      "title_template": "$1 - X posts",
+      "link_template": "https://x.com/$1",
+      "slug_template": "x-$1",
+      "keys": { "date": ["createdAt"] },
+      "keys_reasoning": "date only. The field is 'createdAt', which is NOT in the default chain (the chain has 'postedAt', not 'createdAt'). Its value is Twitter's legacy stamp, 'Fri Nov 24 17:49:36 +0000 2023', which the builder's date parser handles by falling through fromisoformat to parsedate_to_datetime. id ('id'), text ('text') and url ('url') all hit the defaults; 'twitterUrl' is the twitter.com twin and is correctly ignored.",
+      "pricing": "PAY_PER_EVENT, minimalMaxTotalChargeUsd $0.02. 'list-query' costs $0.016 per handle or search term and covers the first ~40 tweets. Dataset items are tiered by number of queries in the run: $0.0004 per item at 5 queries or fewer. One handle at 25 tweets is one list-query, about $0.016 per refresh, the cheapest recipe here. All plan tiers are priced identically in the current entry.",
+      "health": "17,379,313 total runs; rebuilt 2026-08-22; 30 days: 1,306,553 of 1,308,982 succeeded (99.81%), ZERO hard failures, 1,716 timeouts.",
+      "config_template": {
+        "_comment": "X/Twitter user timeline. 'date' MUST be overridden to createdAt: the default chain has postedAt but not createdAt, and a date miss fails silently, stamping items with build time so the feed re-dates itself every run. maxItems is mandatory: leave it out and the actor scrapes unlimited tweets and bills for every one.",
+        "version": 1,
+        "title": "$1 - X posts",
+        "link": "https://x.com/$1",
+        "description": "Public posts from @$1 on X, rebuilt weekly as RSS.",
+        "actor": "apidojo~twitter-scraper-lite",
+        "input": { "twitterHandles": ["$1"], "sort": "Latest", "maxItems": 25 },
+        "limit_field": "maxItems",
+        "max_items": 60,
+        "max_charge_usd": 0.1,
+        "keys": { "date": ["createdAt"] }
+      },
+      "user_notes": [
+        "About $0.016 per refresh, the cheapest recipe in this file.",
+        "max_charge_usd is lowered to 0.10 from the 0.50 default. Expected spend is $0.016, so that keeps a 6x margin while shrinking the blast radius of a runaway run to a fifth. The actor's own floor is $0.02, so 0.10 is safely above it.",
+        "FREE-PLAN RESTRICTION: the README says free-plan users get demo mode only, 5 runs a month capped at 10 items each. A weekly rebuild of ONE feed is about 4.3 runs a month, so a single X feed barely fits and two would not. The current pricing entry contradicts this (FREE is priced like DIAMOND), so the cap appears to be enforced in the actor's code rather than through pricing. Warn the user before they add a second X feed.",
+        "The actor enforces one concurrent run. If several X feeds ever build in parallel the extras may be refused; the pipeline is fail-isolated per source, so that only skips a feed for the week.",
+        "A twitterHandles feed includes replies and retweets, and the lite actor has no field to filter them out. For originals only, swap the input to \"searchTerms\": [\"from:$1 -filter:replies -filter:retweets\"] at the same $0.016 price.",
+        "Do not switch sort to 'Top' to get more results. It is engagement-ranked, not chronological, which is wrong for a feed."
+      ]
+    }
+  ],
+
+  "needs_checking": [
+    {
+      "id": "tiktok-cheap",
+      "actor": "apidojo~tiktok-profile-scraper",
+      "platform": "TikTok profile videos",
+      "why_interesting": "Flat $0.0003 per item with no plan tiering, 10x cheaper than the clockworks recipe on the free tier (about $0.90/month against $9/month at 25 videos, four polls a day), and the best reliability of the TikTok candidates at 0.09% failures over 30 days.",
+      "why_not_in_recipes": "Its cap field maxItems has NO default at all, so a hand-edited config that drops it runs unbounded against a per-result meter. Its README also contradicts its own schema (startUrls documented as an array of objects, declared as a stringList), which is a bad sign for the rest of the documentation. Field mapping is inferred, not observed.",
+      "if_you_use_it": {
+        "input": { "usernames": ["$1"], "maxItems": 25 },
+        "limit_field": "maxItems",
+        "keys": { "text": ["title"], "url": ["postPage"], "date": ["uploadedAtFormatted", "uploadedAt"] },
+        "note": "Three overrides instead of two: there is no 'text' field, the caption lives in 'title'. Do NOT use its since/until date filters. The schema and README define them in opposite directions, and the README's own example passes an until earlier than its since."
+      }
+    },
+    {
+      "id": "instagram-cheap",
+      "actor": "instagram-scraper~fast-instagram-post-scraper",
+      "platform": "Instagram profile posts",
+      "why_interesting": "$0.0010 per result on FREE and $0.00045 on BRONZE, cheaper than the official actor, and it REQUIRES both instagramUsernames and postsPerProfile so it cannot run uncapped. 382,496 runs, 4.72 rating, modified 2026-08-14.",
+      "why_not_in_recipes": "A community actor with far less scrutiny than apify~instagram-post-scraper, and its output was not verified against a build schema.",
+      "if_you_use_it": {
+        "limit_field": "postsPerProfile",
+        "keys": { "text": ["caption"] },
+        "note": "Only one override: its url field is 'post_url' and its date field is 'date', both already in the default chains."
+      }
+    },
+    {
+      "id": "x-alternative",
+      "actor": "xtdata~twitter-x-user-tweets-scraper",
+      "platform": "X / Twitter",
+      "why_interesting": "A safe fallback if apidojo's free-plan demo cap becomes a blocker. Over 30 days, 939 of 940 runs succeeded.",
+      "why_not_in_recipes": "Its latest tagged build finished 2026-03-18, five months stale on a platform where actors churn constantly. Only 4,033 lifetime runs, 304 users, zero reviews. Its pricing-event description threatens to block users who scrape fewer than 50 items per run, which is exactly what an RSS poller does. And its minimalMaxTotalChargeUsd is $2.00, above the builder's $0.50 default, so any config MUST set \"max_charge_usd\": 2, quadrupling the per-run blast radius.",
+      "if_you_use_it": {
+        "keys": { "text": ["full_text"], "date": ["created_at"] },
+        "note": "Two overrides, and max_charge_usd must be 2 or the run is rejected outright."
+      }
+    },
+    {
+      "id": "threads",
+      "platform": "Threads (threads.net)",
+      "actor": null,
+      "why_not_in_recipes": "No native RSS (threads.net/@user/rss returns 404) and no actor was evaluated. Follow 'fallback' to find one, and report back before writing a config."
+    },
+    {
+      "id": "facebook-twitch-patreon-telegram",
+      "platform": "Facebook pages, Twitch, Patreon posts, Telegram channels",
+      "actor": null,
+      "why_not_in_recipes": "Confirmed to have no native feed, but no actor was evaluated for any of them. Follow 'fallback'."
+    }
+  ],
+
+  "disqualified": [
+    {
+      "actor": "patient_discovery~twitter-user-tweets",
+      "reason": "NO FIELD CAPS RESULTS. Its entire input is {userId (required), maxPages (default 1)}, and maxPages caps PAGES, not items. Setting it to 25 scrapes roughly 500 tweets; setting it to 1 makes the builder read exactly one item into the feed. It also emits no per-tweet URL at all, so every feed entry would link to the profile instead of the tweet, which no keys override can fix. Its README documents a 'maxResults' field that does not exist in the build."
+    },
+    {
+      "actor": "clockworks~free-tiktok-scraper",
+      "reason": "Strictly dominated by clockworks~tiktok-profile-scraper: identical $0.003 FREE-tier price per result (the 'free' is about adding it, not running it), identical output shape, but a 2.40% failure ratio against 0.84%, an empty required list so a typo in 'profiles' silently changes scrape mode instead of erroring, and resultsPerPage defaulting to 1."
+    },
+    {
+      "rule": "Any actor whose input schema requires a cookie, sessionid, li_at, session token, password or credential field.",
+      "reason": "The config file is world-readable in a public repo. This is not negotiable and there is no 'just this once'."
+    }
+  ],
+
+  "fallback": {
+    "when": "The pasted URL matches nothing in native_rss and nothing in recipes.",
+    "first": "Before reaching for Apify, try feed autodiscovery on the URL itself: fetch the page and look for <link rel=\"alternate\" type=\"application/rss+xml\">. A surprising number of sites, every WordPress, Ghost, Substack, Blogger and Tumblr install among them, have a free feed nobody advertises. A free feed always beats a paid actor.",
+    "search_the_store": {
+      "endpoint": "https://api.apify.com/v2/store?search=<platform+what+you+want>&limit=20&sortBy=relevance",
+      "auth": "None required.",
+      "read_from_each_result": ["username (the owner)", "name (the actor name)", "stats.totalRuns", "stats.publicActorRunStats30Days", "modifiedAt"],
+      "note": "Store search is a starting point, not an answer. Shortlist two or three and check each one properly below."
+    },
+    "check_one_actor": [
+      {
+        "step": 1,
+        "action": "GET https://api.apify.com/v2/acts/<owner>~<name>",
+        "requires": "HTTP 200. A 404 disqualifies the actor outright: it was renamed or deleted.",
+        "also_read": [
+          "data.taggedBuilds.latest.buildId, needed for step 2",
+          "data.pricingInfos: take the entry with the LATEST startedAt, not the first in the list",
+          "data.stats.totalRuns, data.stats.publicActorRunStats30Days, data.modifiedAt, data.isDeprecated"
+        ]
+      },
+      {
+        "step": 2,
+        "action": "GET https://api.apify.com/v2/actor-builds/<buildId>",
+        "requires": "data.inputSchema. Note it is a JSON STRING that must be parsed, not an object.",
+        "read": [
+          "the 'required' array: the exact required fields",
+          "every property with its type, default, prefill, maximum and enum",
+          "the exact name of the field that caps result count: limit, maxItems, maxPosts, resultsLimit, resultsPerPage, maxResults, postsPerProfile, ...",
+          "data.readme for the documented output shape, treated as a hint rather than a fact",
+          "data.actorDefinition.storages.dataset: if present, its field list or views are machine-readable and far more trustworthy than the README"
+        ]
+      },
+      {
+        "step": 3,
+        "action": "Map the five fields (id, title, text, url, date) against rules.default_key_chains and write an override only where the default chain genuinely misses.",
+        "note": "Leave title's chain empty for any social platform. Check the date mapping hardest: a date miss fails silently and re-dates the whole feed on every run."
+      }
+    ],
+    "disqualifiers": [
+      "The actor does not exist: GET /v2/acts/... returns 404.",
+      "NO FIELD CAPS RESULTS. Say this loudly and stop. Billing is per result and an uncapped run can eat the whole monthly allowance. A cap that exists but has no default is a lesser but real hazard: usable, because this pipeline always writes the cap explicitly, but flag it.",
+      "The input requires a cookie, sessionid, li_at, session token, password, API key or any credential. The config is world-readable in a public repo.",
+      "The cap field caps PAGES or REQUESTS rather than ITEMS. The builder passes the cap value as both the actor's input limit and the maxItems read-back parameter, so a page-count field breaks in both directions.",
+      "The actor's output has no per-item URL. Nothing in the keys machinery can synthesise one, and every feed entry would link to the same profile page.",
+      "isDeprecated is true, or the latest build is many months old on a platform that changes constantly.",
+      "minimalMaxTotalChargeUsd is above the config's max_charge_usd, because Apify rejects the run outright. The builder's default is $0.50 and its ceiling is $5."
+    ],
+    "prefer": "Actively maintained and widely used: high data.stats.totalRuns, a recent data.modifiedAt, and a low FAILED/TOTAL ratio in data.stats.publicActorRunStats30Days. An actor with thousands of monthly users has been debugged by thousands of people.",
+    "then": "REPORT BACK RATHER THAN GUESS. Tell the user the actor name, whether it exists, the exact required fields, the exact cap field and its default, the pricing model and price per result, the run-health numbers, and which of the five key fields need an override. Say plainly which parts you verified against the build and which you inferred from a README. Do not write a source file for an unverified actor, and never invent an actor name that sounds plausible: a config naming a non-existent actor fails silently every week.",
+    "afterwards": "If the actor checks out and the user agrees, add it to this file's 'recipes' array so the next person does not repeat the work."
+  },
+
+  "worked_example_actor": {
+    "pasted_url": "https://www.tiktok.com/@gordonramsayofficial",
+    "matched_recipe": "tiktok",
+    "capture_1": "gordonramsayofficial",
+    "slug": "tiktok-gordonramsayofficial",
+    "writes_file": "sources/tiktok-gordonramsayofficial.json",
+    "file_content": {
+      "_comment": "TikTok profile videos. Every paid add-on is pinned to its free value explicitly, so a future change to an actor default cannot silently start charging.",
+      "version": 1,
+      "title": "gordonramsayofficial - TikTok videos",
+      "link": "https://www.tiktok.com/@gordonramsayofficial",
+      "description": "Latest TikTok videos from @gordonramsayofficial.",
+      "actor": "clockworks~tiktok-profile-scraper",
+      "input": {
+        "profiles": ["gordonramsayofficial"],
+        "profileScrapeSections": ["videos"],
+        "profileSorting": "latest",
+        "excludePinnedPosts": true,
+        "resultsPerPage": 25,
+        "shouldDownloadVideos": false,
+        "shouldDownloadCovers": false,
+        "shouldDownloadSlideshowImages": false,
+        "shouldDownloadAvatars": false,
+        "downloadSubtitlesOptions": "NEVER_DOWNLOAD_SUBTITLES"
+      },
+      "limit_field": "resultsPerPage",
+      "max_items": 60,
+      "keys": { "url": ["webVideoUrl"], "date": ["createTimeISO", "createTime"] }
+    },
+    "tell_the_user": "https://rat-on-bird-up.github.io/linkedin-rss/tiktok-gordonramsayofficial.xml, live after the next build. About $0.075 per refresh."
+  },
+
+  "worked_example_native": {
+    "pasted_url": "https://www.youtube.com/@veritasium",
+    "matched": "native_rss / youtube",
+    "action": "NO source file. Fetch the channel page and read the rel=alternate application/rss+xml href.",
+    "tell_the_user": "https://www.youtube.com/feeds/videos.xml?channel_id=UCHnyfMqiRRG1u-2MsSQLbXA, subscribe directly. It is free and updates instantly."
+  },
+
+  "worked_example_slug_transform": {
+    "pasted_url": "https://x.com/nasa_hubble",
+    "capture_1": "nasa_hubble",
+    "goes_into_input_as": "nasa_hubble",
+    "slug_template": "x-$1",
+    "slug_after_transform": "x-nasa-hubble",
+    "why": "The underscore is legal in an X handle but illegal in a slug, so the slug converts it while the input keeps the real handle. Getting this backwards either breaks the config validation or scrapes a non-existent account."
+  }
+}
