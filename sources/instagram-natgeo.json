@@ -1,0 +1,27 @@
+{
+  "_comment": "Validation source. Written through the GitHub REST contents API to prove the phone path end to end. resultsLimit is 5 rather than the recipe's 25 to keep the check cheap; raise it to 25 if this feed is kept.",
+  "version": 1,
+  "title": "natgeo - Instagram posts",
+  "link": "https://www.instagram.com/natgeo/",
+  "description": "Latest public Instagram posts from @natgeo.",
+  "actor": "apify~instagram-post-scraper",
+  "input": {
+    "username": [
+      "natgeo"
+    ],
+    "resultsLimit": 5,
+    "dataDetailLevel": "basicData",
+    "skipPinnedPosts": true
+  },
+  "limit_field": "resultsLimit",
+  "max_items": 60,
+  "keys": {
+    "text": [
+      "caption",
+      "alt"
+    ],
+    "date": [
+      "timestamp"
+    ]
+  }
+}
