@@ -1,11 +1,11 @@
-<?xml version='1.0' encoding='utf-8'?>
-<rss xmlns:ns0="http://www.w3.org/2005/Atom" version="2.0">
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
     <title>Brad Haft — LinkedIn posts</title>
     <link>https://www.linkedin.com/in/bradhaft/</link>
     <description>Public LinkedIn posts, rebuilt weekly as RSS.</description>
-    <ns0:link href="https://rat-on-bird-up.github.io/linkedin-rss/feed.xml" rel="self" type="application/rss+xml" />
-    <lastBuildDate>Sat, 22 Aug 2026 17:03:33 +0000</lastBuildDate>
+    <atom:link href="https://rat-on-bird-up.github.io/linkedin-rss/feed.xml" rel="self" type="application/rss+xml"/>
+    <lastBuildDate>Sat, 22 Aug 2026 17:07:20 +0000</lastBuildDate>
     <item>
       <title>this</title>
       <link>https://www.linkedin.com/posts/bradhaft_this-activity-7496581925051109376-vuo3</link>
@@ -34,14 +34,14 @@ i run the branded social accounts for Clay, which means i spend all day thinking
 
 the thing is, if you know me, i do not like talking like a professional. i do not have it in me. 
 
-this might handicap my corporate career, but truly, i do not want to be someone i'm not.
+this might handicap my corporate career, but truly, i do not want to be someone i&#x27;m not.
 
 during my time in J-school and writing newsletters for 6AM City, and growing up reading Morning Brew, i learned to write/talk as if i was talking to a friend on the couch.
 
 through watching wrastling, i learned to turn the dial 10% of who my “voice” is.
 and through making LinkedIn my living, i studied the actual shapes of micro-blog-style posts.
 
-together, this is my "sauce" and it can't be replicated. 
+together, this is my &quot;sauce&quot; and it can&#x27;t be replicated. 
 
 and somehow, what started as a dumb competition with Owen Ciha to just rip more daily personal posts, mixed with jealousy over Sarah Khasrovi’s viral one-liners, mixed with watching Alex Lieberman turn an audience into power, brand deals, and distribuush, turned into 3,000 new followers in 3 months. 
 
@@ -49,7 +49,7 @@ i changed my bio every day to match my weird posts and treated LinkedIn like a l
 
 then yesterday i flew too close to the sun. 
 
-perhaps I used to many "💦" emojis. 
+perhaps I used to many &quot;💦&quot; emojis. 
 
 but when my personal account got temporarily banned, it also put the brand accounts i run in a weird spot, because you need a personal account to manage company pages -- I nearly pooped myself. 
 
@@ -84,7 +84,7 @@ If the needle is moving, then we’re clearly tracking seamlessly toward our mis
 
 Tracking toward our KPIs requires us to touch base, circle back, and ensure we have the necessary bandwidth. 
 
-I'll put time on the cal to circle back. 
+I&#x27;ll put time on the cal to circle back. 
 
 Because if we circle back with enough bandwidth, we can safely take things offline to look under the hood.
 
@@ -98,16 +98,16 @@ And if we have a strategic consensus...
 
 Then I think we’re in agreement.
 
-If not, then let's blow bubbles on it. 
+If not, then let&#x27;s blow bubbles on it. 
 
 Thoughts?</description>
     </item>
     <item>
-      <title>I'm either going to sound like an idiot or an absolute genius. But the world needs to…</title>
+      <title>I&#x27;m either going to sound like an idiot or an absolute genius. But the world needs to…</title>
       <link>https://www.linkedin.com/posts/bradhaft_im-either-going-to-sound-like-an-idiot-or-activity-7492672355375222784-L2fp</link>
       <guid isPermaLink="false">urn:li:activity:7492672355375222784</guid>
       <pubDate>Mon, 10 Aug 2026 22:04:56 +0000</pubDate>
-      <description>I'm either going to sound like an idiot or an absolute genius.
+      <description>I&#x27;m either going to sound like an idiot or an absolute genius.
 
 But the world needs to know about this stuff because it’s not just a theory of physics and science that we all have a common sense to grasp about and to know that the world has no real scientific knowledge about the world or any scientific theory of the universe or the world has been created in a very specific time frame that is the most likely explanation of this phenomenon in terms that are related with our universe or universe or universe or universe that is the basis for our own existence or our universe and the world itself is the world that is a a a reality of our universe that is just as real and that is the world is not real or that is the same thing and we have to know that is a world and that we have a different universe that is a different universe is that we have no idea what we are just another universe that is what is what is the universe is. 
 
@@ -139,7 +139,7 @@ Hope this helps.</description>
       <link>https://www.linkedin.com/posts/bradhaft_greeting-coworkers-with-hey-hey-yo-yo-activity-7490811697876832257-FQhi</link>
       <guid isPermaLink="false">urn:li:activity:7490811697876832257</guid>
       <pubDate>Wed, 05 Aug 2026 18:51:21 +0000</pubDate>
-      <description>Greeting coworkers with “hey hey” “yo yo” or “whadup whadup” -- then walking --  away bc I 👉don’t👉have👉anything👉interesting👉to👉say👉IRL👉and👉don't👉want👉to👉be👉percieved👉</description>
+      <description>Greeting coworkers with “hey hey” “yo yo” or “whadup whadup” -- then walking --  away bc I 👉don’t👉have👉anything👉interesting👉to👉say👉IRL👉and👉don&#x27;t👉want👉to👉be👉percieved👉</description>
     </item>
     <item>
       <title>oi mate can I bum a credit, innit me if I was from the united kingdom and was out of…</title>
@@ -180,11 +180,11 @@ you guys sound like a buncha virgies</description>
       <description>social media managers after suggesting memes in the strategy meeting</description>
     </item>
     <item>
-      <title>I need a vibe coded tool that's like a "LinkedIn is feeling kinda off rn. don't post yet"…</title>
+      <title>I need a vibe coded tool that&#x27;s like a &quot;LinkedIn is feeling kinda off rn. don&#x27;t post yet&quot;…</title>
       <link>https://www.linkedin.com/posts/bradhaft_i-need-a-vibe-coded-tool-thats-like-a-linkedin-activity-7488286040483524608-7UKY</link>
       <guid isPermaLink="false">urn:li:activity:7488286040483524608</guid>
       <pubDate>Wed, 29 Jul 2026 19:35:17 +0000</pubDate>
-      <description>I need a vibe coded tool that's like a "LinkedIn is feeling kinda off rn. don't post yet" meter</description>
+      <description>I need a vibe coded tool that&#x27;s like a &quot;LinkedIn is feeling kinda off rn. don&#x27;t post yet&quot; meter</description>
     </item>
     <item>
       <title>computa, make my job lower cog</title>
@@ -294,7 +294,7 @@ success comes down to credentials, permission, drive, hunger, determination, and
 
 you just need to believe in yourself.
 
-comment "TIME WASTE" for the playbook.</description>
+comment &quot;TIME WASTE&quot; for the playbook.</description>
     </item>
     <item>
       <title>Want me to “apply AI” do this workflow? How bout you apply this A to your eye?????!!!!!</title>
@@ -313,11 +313,11 @@ How bout you apply this A to your eye?????!!!!!</description>
       <description>this actually is my first rodeo</description>
     </item>
     <item>
-      <title>NEW: Clay's Solutions Engineering team just published their 30+ best workflows into…</title>
+      <title>NEW: Clay&#x27;s Solutions Engineering team just published their 30+ best workflows into…</title>
       <link>https://www.linkedin.com/posts/grow-with-clay_new-clays-solutions-engineering-team-just-ugcPost-7486126050100568065-Be2f</link>
       <guid isPermaLink="false">urn:li:ugcPost:7486126050100568065</guid>
       <pubDate>Thu, 23 Jul 2026 20:40:36 +0000</pubDate>
-      <description>NEW: Clay's Solutions Engineering team just published their 30+ best workflows into managed functions. :) 
+      <description>NEW: Clay&#x27;s Solutions Engineering team just published their 30+ best workflows into managed functions. :) 
 
 Steal the logic from a seasoned builder, w/o the build time. Now live on allll plans!! 
 
@@ -369,13 +369,13 @@ i know this because they told me.
 
 every night a void figure perches on the front of my bed.
 
-i can't move.
+i can&#x27;t move.
 
-it says "cold pitch Ramp on using Channing Tatum's Gambit in a commercial"
+it says &quot;cold pitch Ramp on using Channing Tatum&#x27;s Gambit in a commercial&quot;
 
-"he's literally holding a credit card in the avengers doomsday trailer"
+&quot;he&#x27;s literally holding a credit card in the avengers doomsday trailer&quot;
 
-"it's untapped alpha"
+&quot;it&#x27;s untapped alpha&quot;
 
 bound by my linen duvet from Quince and the weight of a thousand horses sitting on my chest (hot), the government voice figure crawls up the walls, onto the ceiling, and out the window. 
 
