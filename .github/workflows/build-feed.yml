@@ -1,41 +1,92 @@
-name: Build LinkedIn feed
+name: Build feeds
 
 on:
   schedule:
     # 07:00 UTC every Sunday. GitHub's scheduler drifts under load, so treat
     # this as "some time Sunday morning" rather than an exact clock time.
     - cron: "0 7 * * 0"
-  workflow_dispatch: # lets you trigger a run by hand from the Actions tab
+  push:
+    branches: [main]
+    # Only a config change rebuilds. Without this filter, every commit to the
+    # repo would spend Apify credit, including the job's own README edits.
+    paths:
+      - "sources/**"
+  workflow_dispatch: # rebuild everything by hand from the Actions tab
 
 permissions:
-  contents: write # needed to commit the regenerated feed back to the repo
+  contents: write # needed to commit the regenerated feeds back to the repo
+
+concurrency:
+  group: build-feeds
+  cancel-in-progress: false # never kill a run midway through writing a feed
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2 # need the parent commit to diff which sources changed
 
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      - name: Build the feed
+      - name: Work out which sources to build
+        id: scope
+        run: |
+          if [ "${{ github.event_name }}" != "push" ]; then
+            echo "Scheduled or manual run: building every source."
+            echo "args=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # On a push, rebuild only the sources whose config actually changed,
+          # so adding one feed does not re-scrape and re-charge for all of them.
+          changed=$(git diff --name-only HEAD^ HEAD -- 'sources/*.json' \
+                    | xargs -r -n1 basename \
+                    | sed 's/\.json$//' \
+                    | tr '\n' ' ')
+          if [ -z "$changed" ]; then
+            echo "No source config changed. Building every source."
+            echo "args=" >> "$GITHUB_OUTPUT"
+          else
+            echo "Changed sources: $changed"
+            echo "args=--only $changed" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build the feeds
+        id: build
+        continue-on-error: true # a broken source must not discard healthy feeds
         env:
           APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
-        run: python scripts/build_feed.py
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: python scripts/build_feed.py ${{ steps.scope.outputs.args }}
 
-      - name: Commit if the feed changed
+      - name: Commit whatever was rebuilt
+        if: always()
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          # Stage first: on the very first run docs/feed.xml is untracked, and an
-          # untracked path is invisible to `git diff`, so checking the unstaged
-          # diff would silently skip the commit that creates the feed.
-          git add docs/feed.xml
+          # Stage before diffing: a brand new source's docs/<slug>.xml is
+          # untracked, and untracked paths are invisible to `git diff`, so
+          # checking the unstaged diff would skip the commit that creates it.
+          git add -A -- 'docs/*.xml' docs/status.json docs/index.html
           if git diff --cached --quiet; then
-            echo "No new posts this week."
+            echo "Nothing changed."
           else
-            git commit -m "Update feed ($(date -u +%Y-%m-%d))"
-            git push
+            git commit -m "Update feeds ($(date -u +%Y-%m-%d)) [skip ci]"
+            git push || {
+              git pull --rebase --autostash origin main
+              git push
+            }
           fi
+
+      - name: Report the build result
+        if: always()
+        run: |
+          if [ "${{ steps.build.outcome }}" = "failure" ]; then
+            echo "::error::One or more sources failed. Healthy feeds were still committed."
+            exit 1
+          fi
+          echo "All sources built."
