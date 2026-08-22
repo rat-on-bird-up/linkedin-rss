@@ -8,7 +8,7 @@ on:
   push:
     branches: [main]
     # Only a config change rebuilds. Without this filter, every commit to the
-    # repo would spend Apify credit, including the job's own README edits.
+    # repo would spend Apify credit, including the job's own feed commits.
     paths:
       - "sources/**"
   workflow_dispatch: # rebuild everything by hand from the Actions tab
@@ -23,30 +23,50 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45 # each source may wait up to 300s for its actor
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 2 # need the parent commit to diff which sources changed
+          fetch-depth: 0 # need history to diff the whole pushed range
 
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
+      - name: Run the regression tests
+        # No network, a couple of seconds. Every case here is a fault that once
+        # lost or corrupted a feed, so this runs before anything is spent.
+        run: python scripts/test_build_feed.py
+
       - name: Work out which sources to build
         id: scope
+        env:
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+          EVENT: ${{ github.event_name }}
         run: |
-          if [ "${{ github.event_name }}" != "push" ]; then
+          set -euo pipefail
+          if [ "$EVENT" != "push" ]; then
             echo "Scheduled or manual run: building every source."
             echo "args=" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          # On a push, rebuild only the sources whose config actually changed,
-          # so adding one feed does not re-scrape and re-charge for all of them.
-          changed=$(git diff --name-only HEAD^ HEAD -- 'sources/*.json' \
-                    | xargs -r -n1 basename \
-                    | sed 's/\.json$//' \
-                    | tr '\n' ' ')
+          # Diff the WHOLE pushed range, not HEAD^..HEAD. A push can carry
+          # several commits, and a source changed in any but the last one would
+          # otherwise never be built.
+          if [ -z "${BEFORE:-}" ] \
+             || [ "$BEFORE" = "0000000000000000000000000000000000000000" ] \
+             || ! git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
+            echo "Cannot resolve the previous tip: building every source."
+            echo "args=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Names are filtered to the slug charset here as well as in Python,
+          # because this value is expanded by a shell that holds APIFY_TOKEN.
+          changed=$(git diff --name-only "$BEFORE" "$AFTER" -- 'sources/*.json' \
+                    | sed -n 's#^sources/\(.*\)\.json$#\1#p' \
+                    | grep -E '^[a-z0-9][a-z0-9-]{0,63}$' \
+                    | sort -u | tr '\n' ' ' || true)
           if [ -z "$changed" ]; then
             echo "No source config changed. Building every source."
             echo "args=" >> "$GITHUB_OUTPUT"
@@ -61,7 +81,11 @@ jobs:
         env:
           APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: python scripts/build_feed.py ${{ steps.scope.outputs.args }}
+          # Through the environment, never interpolated straight into the
+          # command line: an expression there is expanded by the shell before
+          # Python ever sees it, in a step that holds the Apify token.
+          ONLY: ${{ steps.scope.outputs.args }}
+        run: python scripts/build_feed.py $ONLY
 
       - name: Commit whatever was rebuilt
         if: always()
@@ -71,13 +95,13 @@ jobs:
           # Stage before diffing: a brand new source's docs/<slug>.xml is
           # untracked, and untracked paths are invisible to `git diff`, so
           # checking the unstaged diff would skip the commit that creates it.
-          git add -A -- 'docs/*.xml' docs/status.json docs/index.html
+          git add -A -- docs/ ':!docs/*.tmp'
           if git diff --cached --quiet; then
             echo "Nothing changed."
           else
             git commit -m "Update feeds ($(date -u +%Y-%m-%d)) [skip ci]"
             git push || {
-              git pull --rebase --autostash origin main
+              git pull --rebase --autostash origin "${GITHUB_REF_NAME}"
               git push
             }
           fi
@@ -86,7 +110,7 @@ jobs:
         if: always()
         run: |
           if [ "${{ steps.build.outcome }}" = "failure" ]; then
-            echo "::error::One or more sources failed. Healthy feeds were still committed."
+            echo "::error::One or more sources failed. Healthy feeds were still committed. See docs/status.json."
             exit 1
           fi
           echo "All sources built."

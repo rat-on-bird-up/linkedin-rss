@@ -31,6 +31,11 @@ Drop a new JSON file into `sources/`. Pushing it triggers a build of just that
 source, so this works from a phone through the GitHub connector with no local
 checkout.
 
+That connector can write anywhere in the repo except `.github/workflows/`, which
+returns `403 Resource not accessible by integration`. So anything you might want
+to change without a laptop has to live in a source file, not in the workflow.
+Changing the schedule or the triggers needs a real checkout.
+
 ```json
 {
   "version": 1,

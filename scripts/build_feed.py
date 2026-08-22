@@ -19,6 +19,7 @@ Standard library only, so CI needs no pip install step.
 """
 
 import argparse
+import hashlib
 import html
 import json
 import os
@@ -166,6 +167,15 @@ def load_source(path):
     if link:
         _require(urllib.parse.urlparse(link).scheme in ("http", "https"), path,
                  '"link" must be an http or https URL')
+        # Normalise here, once. normalise() stores this string on items that
+        # have no URL of their own, and read_existing() normalises whatever it
+        # reads back. If the two differ, every archived fallback entry changes
+        # identity on the next run and merge() collapses the archive.
+        link = normalise_url(link)
+
+    enabled = raw.get("enabled", True)
+    _require(isinstance(enabled, bool), path,
+             '"enabled" must be true or false, not a string')
 
     for field in raw:
         if field.startswith("_"):
@@ -187,7 +197,7 @@ def load_source(path):
         "timeout": timeout,
         "max_charge_usd": float(charge),
         "cap": cap,
-        "enabled": raw.get("enabled", True),
+        "enabled": enabled,
         "keys": keys,
     }
 
@@ -202,13 +212,17 @@ def load_all_sources():
     )
     if not paths:
         raise ConfigError(f"no *.json files in {SOURCES_DIR}/")
-    sources = [load_source(p) for p in paths]
-    seen = {}
-    for source in sources:
-        if source["slug"] in seen:
-            raise ConfigError(f"duplicate slug {source['slug']!r}")
-        seen[source["slug"]] = True
-    return sources
+    sources, broken = [], []
+    for path in paths:
+        slug = os.path.splitext(os.path.basename(path))[0]
+        try:
+            sources.append(load_source(path))
+        except ConfigError as error:
+            # One unreadable file must not stop every other feed from updating.
+            broken.append({"slug": slug, "path": path, "error": str(error)})
+        except OSError as error:
+            broken.append({"slug": slug, "path": path, "error": f"cannot read: {error}"})
+    return sources, broken
 
 
 def feed_path(slug):
@@ -321,8 +335,18 @@ def xml_text(value):
 # --- Fetch -------------------------------------------------------------------
 
 
+_LIVE_TOKEN = ""
+
+
 def redact(text):
-    return TOKEN_RE.sub("apify_api_***", str(text))
+    """Scrub the token from anything that might reach a committed file."""
+    out = TOKEN_RE.sub("apify_api_***", str(text))
+    # urllib puts the offending header VALUE in its exception message, and a
+    # token that does not match TOKEN_RE would otherwise land in the public
+    # status.json verbatim.
+    if _LIVE_TOKEN:
+        out = out.replace(_LIVE_TOKEN, "***")
+    return out
 
 
 def fetch(source, token):
@@ -402,7 +426,21 @@ def normalise(raw_items, source, run_started):
             # source fails loudly instead of publishing rubbish.
             continue
         link = normalise_url(link) if link else (source["link"] or "")
-        guid = str(guid) if guid else link
+        if guid:
+            guid = str(guid)
+            # Normalise a URL-shaped id too, so it matches what read_existing
+            # produces when the same value comes back out of the feed.
+            if guid.startswith("http"):
+                guid = normalise_url(guid)
+        elif link and link != source["link"]:
+            guid = link
+        else:
+            # No id and no URL of its own. Falling back to the shared source
+            # link would give every such item the same guid, and merge() would
+            # keep exactly one of them. Hash the content instead: stable across
+            # runs for the same post, distinct between different posts.
+            digest = hashlib.sha1(text.encode("utf-8", "replace")).hexdigest()[:16]
+            guid = f"{source['slug']}:{digest}"
         date = parse_date(pick(raw, keys["date"]))
         if date is None:
             # Stamp undated items in the order the actor returned them, which is
@@ -479,19 +517,39 @@ def identity(post, fallback_link=""):
 
 def merge(existing, fresh, max_items, fallback_link=""):
     """Existing entries win on collision. Never rewrite what is already out."""
-    merged = {identity(post, fallback_link): post for post in fresh}
-    merged.update({identity(post, fallback_link): post for post in existing})
+    existing_ids = [identity(post, fallback_link) for post in existing]
+    if len(set(existing_ids)) != len(existing_ids):
+        # Two archived entries now resolve to the same identity, so building a
+        # dict from them would silently drop one. That only happens when the
+        # identity rule has shifted under an existing archive, and the archive
+        # is the only copy, so refuse rather than rewrite it.
+        lost = len(existing_ids) - len(set(existing_ids))
+        raise SourceError(
+            f"{lost} of {len(existing_ids)} archived entries collapse to the "
+            "same identity. Refusing to rewrite the feed."
+        )
+
+    fresh_ids = [identity(post, fallback_link) for post in fresh]
+    if len(set(fresh_ids)) != len(fresh_ids):
+        lost = len(fresh_ids) - len(set(fresh_ids))
+        raise SourceError(
+            f"{lost} of {len(fresh_ids)} fetched items share an identity, so "
+            "they would overwrite each other. The actor is not giving each post "
+            "a distinct id or URL: set keys.id or keys.url for this source."
+        )
+
+    merged = dict(zip(fresh_ids, fresh))
+    merged.update(zip(existing_ids, existing))
     ordered = sorted(merged.values(), key=lambda post: post["date"], reverse=True)
     kept = ordered[:max_items]
 
-    existing_guids = {identity(p, fallback_link) for p in existing}
-    kept_guids = {identity(p, fallback_link) for p in kept}
-    added = len(kept_guids - existing_guids)
-    evicted = len(existing_guids - kept_guids)
+    kept_ids = {identity(post, fallback_link) for post in kept}
+    added = len(kept_ids - set(existing_ids))
+    evicted = len(set(existing_ids) - kept_ids)
 
-    if existing and len(kept) < min(len(existing_guids), max_items):
+    if len(kept) < min(len(existing_ids), max_items):
         raise SourceError(
-            f"merge would shrink the feed from {len(existing_guids)} to {len(kept)}"
+            f"merge would shrink the feed from {len(existing)} to {len(kept)}"
         )
     return kept, added, evicted
 
@@ -566,6 +624,7 @@ def write_status(results, site_url, path=STATUS_PATH):
                 "status": result["status"],
                 "items": result.get("items", was.get("items", 0)),
                 "added_last_run": result.get("added", 0),
+                "evicted_last_run": result.get("evicted", 0),
                 "fetched_last_run": result.get("fetched", 0),
                 "last_success": result.get("last_success") or was.get("last_success", ""),
                 "last_attempt": datetime.now(timezone.utc).isoformat(),
@@ -680,6 +739,8 @@ def main():
     token = os.environ.get("APIFY_TOKEN")
     if not token:
         sys.exit("APIFY_TOKEN is not set.")
+    global _LIVE_TOKEN
+    _LIVE_TOKEN = token
 
     repository = os.environ.get("GITHUB_REPOSITORY", "")
     if "/" in repository:
@@ -689,21 +750,34 @@ def main():
         site_url = "/"
 
     try:
-        sources = load_all_sources()
+        sources, broken = load_all_sources()
     except ConfigError as error:
         # Nothing has been fetched and nothing written, so every feed is intact.
         sys.exit(f"config error: {error}")
+    for bad in broken:
+        print(f"{bad['slug']}: FAILED — {bad['error']}")
 
     run_started = datetime.now(timezone.utc)
-    selected = set(args.only) if args.only else None
-    if selected:
-        known = {s["slug"] for s in sources}
+    selected = None
+    if args.only is not None:
+        if not args.only:
+            sys.exit("config error: --only needs at least one source name")
+        selected = set(args.only)
+        known = {s["slug"] for s in sources} | {b["slug"] for b in broken}
         unknown = selected - known
         if unknown:
-            sys.exit(f"config error: --only names unknown source(s): {sorted(unknown)}")
+            # A source deleted in the same push is named here but no longer
+            # exists. Skipping it beats aborting and rebuilding nothing.
+            print(f"note: --only names source(s) that no longer exist, skipping: "
+                  f"{sorted(unknown)}")
+            selected -= unknown
 
-    results = []
-    failures = 0
+    results = [
+        {"slug": b["slug"], "title": b["slug"], "link": "", "status": "failed",
+         "error": b["error"]}
+        for b in broken
+    ]
+    failures = len(broken)
     for source in sources:
         slug = source["slug"]
         if not source["enabled"]:
