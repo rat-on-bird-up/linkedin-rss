@@ -1,0 +1,41 @@
+name: Build LinkedIn feed
+
+on:
+  schedule:
+    # 07:00 UTC every Sunday. GitHub's scheduler drifts under load, so treat
+    # this as "some time Sunday morning" rather than an exact clock time.
+    - cron: "0 7 * * 0"
+  workflow_dispatch: # lets you trigger a run by hand from the Actions tab
+
+permissions:
+  contents: write # needed to commit the regenerated feed back to the repo
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build the feed
+        env:
+          APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
+        run: python scripts/build_feed.py
+
+      - name: Commit if the feed changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # Stage first: on the very first run docs/feed.xml is untracked, and an
+          # untracked path is invisible to `git diff`, so checking the unstaged
+          # diff would silently skip the commit that creates the feed.
+          git add docs/feed.xml
+          if git diff --cached --quiet; then
+            echo "No new posts this week."
+          else
+            git commit -m "Update feed ($(date -u +%Y-%m-%d))"
+            git push
+          fi
