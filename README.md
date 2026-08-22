@@ -66,8 +66,13 @@ the result count. Everything else has a default.
 
 Paste a link into Claude and ask for a feed. It reads `recipes.json`, works out
 whether the platform already has a free feed, and if not writes the source file
-through the GitHub connector. The push triggers the build and the feed is live a
-few minutes later.
+through the GitHub connector. The push triggers the build and the feed is live
+about a minute later: roughly 20s of Actions, then 20s of Pages.
+
+`docs/.nojekyll` is what keeps that second number small. Without it Pages runs
+Jekyll over a directory of generated XML that has no Jekyll in it, which took
+almost six minutes per deploy and intermittently failed outright when two
+pushes landed close together.
 
 `skill/SKILL.md` is what makes Claude reach for this without being told how.
 Upload it once on the web at claude.ai ➔ Customize ➔ Skills ➔ + ➔ Create skill
