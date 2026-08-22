@@ -1,0 +1,13 @@
+name: Trigger probe
+on:
+  push:
+    paths:
+      - "probe/**"
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo "Fired by: ${{ github.actor }}"
+          echo "Event: ${{ github.event_name }}"
+          echo "Head commit author: ${{ github.event.head_commit.author.name }}"
