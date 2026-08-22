@@ -62,7 +62,7 @@
 
   "native_rss": {
     "_use_this_first": "Every platform in this section publishes RSS or Atom itself, free, with no key and no per-result billing. If a pasted URL matches here, hand the user the feed URL and stop. Do not write a source file. Do not propose an actor. All templates below were fetched and confirmed on 2026-08-22 unless marked otherwise.",
-    "verify_before_reporting": "Fetch the URL you built and FOLLOW REDIRECTS. Bluesky redirects handle to DID and GitHub redirects renamed repos, so a bare 301 or 302 is not a failure. Then check the content-type is xml, rss or atom, not text/html. A 200 alone proves nothing: blog.medium.com/feed returns 200 with an HTML page.",
+    "verify_before_reporting": "Fetch the URL you built and FOLLOW REDIRECTS. Bluesky redirects handle to DID and GitHub redirects renamed repos, so a bare 301 or 302 is not a failure. Then check the content-type is xml, rss or atom, not text/html. A 200 alone proves nothing: blog.medium.com/feed returns 200 with an HTML page. Verify with a GET, never a HEAD: news.ycombinator.com/rss answers HEAD with 405 text/html and GET with 200 application/rss+xml, so a HEAD check condemns a working feed. Spot-checked 2026-08-22: YouTube, Reddit, WordPress, GitHub commits, Bluesky, Hacker News and Medium all served real feeds. The Bluesky handle must be a real one \u2014 bsky.app is the site, not an account, and 404s.",
     "autodiscovery_shortcut": {
       "how": "Fetch the page and take the href from <link rel=\"alternate\" type=\"application/rss+xml\"> verbatim.",
       "when": "Any site not in the table below. WordPress, Ghost, Substack, Blogger, Tumblr and YouTube all advertise their own feed this way. Try this before giving up on a blog."
