@@ -462,15 +462,30 @@ def read_existing(path):
     return existing
 
 
-def merge(existing, fresh, max_items):
+def identity(post, fallback_link=""):
+    """What makes two entries the same post.
+
+    Prefer the link, because it survives a change to which field the guid is
+    derived from. Keying on guid alone means editing keys.id duplicates the
+    entire archive: every post reappears under its new guid alongside its old
+    one. Posts with no link of their own fall back to the source link, which is
+    shared, so those key on guid instead.
+    """
+    link = post.get("link") or ""
+    if link and link != fallback_link:
+        return ("link", link)
+    return ("guid", post["guid"])
+
+
+def merge(existing, fresh, max_items, fallback_link=""):
     """Existing entries win on collision. Never rewrite what is already out."""
-    by_guid = {post["guid"]: post for post in fresh}
-    by_guid.update({post["guid"]: post for post in existing})
-    ordered = sorted(by_guid.values(), key=lambda post: post["date"], reverse=True)
+    merged = {identity(post, fallback_link): post for post in fresh}
+    merged.update({identity(post, fallback_link): post for post in existing})
+    ordered = sorted(merged.values(), key=lambda post: post["date"], reverse=True)
     kept = ordered[:max_items]
 
-    existing_guids = {post["guid"] for post in existing}
-    kept_guids = {post["guid"] for post in kept}
+    existing_guids = {identity(p, fallback_link) for p in existing}
+    kept_guids = {identity(p, fallback_link) for p in kept}
     added = len(kept_guids - existing_guids)
     evicted = len(existing_guids - kept_guids)
 
@@ -640,7 +655,9 @@ def build_one(source, token, run_started, site_url):
             "— check the keys overrides against the actor's output"
         )
 
-    merged, added, evicted = merge(existing, fresh, source["max_items"])
+    merged, added, evicted = merge(
+        existing, fresh, source["max_items"], source["link"]
+    )
     write_feed(source, path, merged, self_url)
     return {
         "fetched": len(raw_items),
