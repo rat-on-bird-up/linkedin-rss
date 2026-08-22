@@ -128,6 +128,16 @@ Every run rewrites `lastBuildDate`, so a quiet week still produces a commit.
 That is deliberate. The commit is proof the job ran, and it resets GitHub's
 60-day inactivity clock that otherwise disables scheduled workflows.
 
+## Tests
+
+`python scripts/test_build_feed.py` runs 41 cases, no network, a couple of
+seconds. CI runs it before spending anything.
+
+Every case corresponds to a fault that actually occurred here, most of them
+silent: an archive replaced by one week of posts, a whole archive collapsed onto
+a single entry, posts overwriting each other because they shared a guid. If you
+change the merge or the parsing, run it.
+
 ## Things that will eventually break
 
 - **The actors.** Third-party scrapers are maintained by individuals, and the
