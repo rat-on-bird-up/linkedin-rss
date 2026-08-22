@@ -81,10 +81,10 @@ at claude.ai ➔ Customize ➔ Skills ➔ Add ➔ Upload a skill. Skills need "C
 execution and file creation" switched on under Settings ➔ Capabilities, and the
 GitHub connector has to be connected or the skill has nothing to write with.
 
-Two constraints that are easy to trip over when editing the skill. The
-`description` in the frontmatter is capped at 200 characters, which is far
-shorter than the descriptions on locally-installed skills, so the full trigger
-list lives in the body instead. And the zip must hold the skill folder at its
+Two constraints that are easy to trip over when editing the skill. Keep the
+frontmatter `description` short — one support article caps it at 200
+characters, the spec says 1,024, and short trigger-only descriptions are what
+Anthropic recommends regardless — so the full trigger list lives in the body. And the zip must hold the skill folder at its
 root with forward-slash paths — PowerShell's `Compress-Archive` writes Windows
 backslashes, which extractors read as one oddly-named file, so repackage with
 `zipfile` in Python rather than `Compress-Archive`.
