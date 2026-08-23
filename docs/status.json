@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-08-22T19:22:27.561262+00:00",
-  "run_url": "https://github.com/rat-on-bird-up/linkedin-rss/actions/runs/32593504988",
+  "generated_at": "2026-08-23T07:32:05.513924+00:00",
+  "run_url": "https://github.com/rat-on-bird-up/linkedin-rss/actions/runs/32625807936",
   "sources": [
     {
       "slug": "feed",
@@ -11,8 +11,8 @@
       "added_last_run": 0,
       "evicted_last_run": 0,
       "fetched_last_run": 25,
-      "last_success": "2026-08-22T19:22:22.349840+00:00",
-      "last_attempt": "2026-08-22T19:22:27.561273+00:00",
+      "last_success": "2026-08-23T07:31:59.918475+00:00",
+      "last_attempt": "2026-08-23T07:32:05.513938+00:00",
       "error": ""
     }
   ]
