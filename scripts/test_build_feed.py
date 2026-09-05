@@ -181,11 +181,12 @@ def test_merge():
     except bf.SourceError:
         check("colliding archive identities raise", True)
 
-    try:
-        bf.merge([], collapsing, 60, src)
-        check("colliding fetched identities raise", False, "(silently collapsed)")
-    except bf.SourceError:
-        check("colliding fetched identities raise", True)
+    # Fetched duplicates (a repost, a pagination overlap) are not an archive
+    # problem: keep the first and carry on, rather than losing the week.
+    kept, added, _ = bf.merge([], collapsing, 60, src)
+    check("colliding fetched identities dedupe rather than raise",
+          len(kept) == 1 and added == 1, f"kept={len(kept)} added={added}")
+    check("the first occurrence is the one kept", kept[0]["guid"] == "x")
 
 
 def test_normalise():
