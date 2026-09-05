@@ -1,5 +1,6 @@
 {
   "_comment": "The filename is the feed URL. This one must stay feed.json so it keeps serving docs/feed.xml, which is the URL already subscribed to. Any key starting with an underscore is ignored, which is how you write comments in JSON.",
+  "_touched": "5 Sep 2026 — no config change; touched to trigger a rebuild after the fetched-duplicate guard was relaxed in scripts/build_feed.py.",
   "version": 1,
   "title": "Brad Haft — LinkedIn posts",
   "link": "https://www.linkedin.com/in/bradhaft/",

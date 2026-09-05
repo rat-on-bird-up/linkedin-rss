@@ -529,14 +529,27 @@ def merge(existing, fresh, max_items, fallback_link=""):
             "same identity. Refusing to rewrite the feed."
         )
 
-    fresh_ids = [identity(post, fallback_link) for post in fresh]
-    if len(set(fresh_ids)) != len(fresh_ids):
-        lost = len(fresh_ids) - len(set(fresh_ids))
-        raise SourceError(
-            f"{lost} of {len(fresh_ids)} fetched items share an identity, so "
-            "they would overwrite each other. The actor is not giving each post "
-            "a distinct id or URL: set keys.id or keys.url for this source."
+    # Fetched items can legitimately repeat: a repost of the author's own post
+    # comes back under the original URL, and pagination can overlap. That is
+    # not an archive-integrity problem, so keep the first occurrence and warn
+    # rather than abandon the week. The archive guard above stays strict.
+    seen = set()
+    deduped = []
+    for post in fresh:
+        key = identity(post, fallback_link)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(post)
+    dropped = len(fresh) - len(deduped)
+    if dropped:
+        print(
+            f"  warning: {dropped} of {len(fresh)} fetched items shared an "
+            "identity with another fetched item and were dropped (likely a "
+            "repost or pagination overlap)"
         )
+    fresh = deduped
+    fresh_ids = [identity(post, fallback_link) for post in fresh]
 
     merged = dict(zip(fresh_ids, fresh))
     merged.update(zip(existing_ids, existing))
