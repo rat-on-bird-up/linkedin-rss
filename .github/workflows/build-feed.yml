@@ -78,11 +78,21 @@ jobs:
             echo "args=--only $changed" >> "$GITHUB_OUTPUT"
           fi
 
+      # The Apify token is not a GitHub secret. It lives in the 1Password
+      # "Automation" vault and is read here through a read-only service
+      # account, the only secret this repo holds. Rotate it in 1Password.
+      - name: Load secrets from 1Password
+        uses: 1password/load-secrets-action@v5
+        with:
+          export-env: true
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          APIFY_TOKEN: op://Automation/Apify/credential
+
       - name: Build the feeds
         id: build
         continue-on-error: true # a broken source must not discard healthy feeds
         env:
-          APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           # Through the environment, never interpolated straight into the
           # command line: an expression there is expanded by the shell before

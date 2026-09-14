@@ -134,8 +134,11 @@ source fails rather than publishing an empty feed.
 
 1. **Apify account.** Sign up at https://apify.com. Under Settings ➔
    Integrations, copy your API token.
-2. **Repo secret.** Settings ➔ Secrets and variables ➔ Actions ➔ New repository
-   secret, named `APIFY_TOKEN`.
+2. **1Password.** Store the token in the `Automation` vault as the API
+   Credential item `Apify`, field `credential`. The workflow reads it at run
+   time through a read-only service account; that account's token is the one
+   repository secret, `OP_SERVICE_ACCOUNT_TOKEN`. Same pattern as the `ops`
+   repo, documented there.
 3. **Spend limit.** In the Apify console, set a hard account usage limit of $4.
    The per-run ceiling in each source file only guards one run at a time.
 4. **Pages.** Settings ➔ Pages ➔ Deploy from a branch ➔ `main` / `/docs`. The
@@ -197,7 +200,7 @@ change the merge or the parsing, run it.
 ## A note on what belongs here
 
 `sources/*.json` is world-readable. Never put a credential in an actor input.
-The only secret in this project is `APIFY_TOKEN`, and it lives in repo secrets.
+The only credential in this project is the Apify token, and it lives in 1Password; the repo holds only the service-account token that reads it.
 
 Do not point this at anything that already publishes RSS. YouTube, Reddit,
 Substack and most blogs already have feeds, and Reader takes those directly for
