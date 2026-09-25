@@ -1,13 +1,15 @@
 {
-  "_comment": "The filename is the feed URL: this serves docs/linkedin-bradhaft.xml. Replaced sources/feed.json on 25 Sep 2026, because Reader kept LinkedIn's logo for the old URL; the archive was carried over.",
-  "_first_run": "limit 50 and backfill_pages are for the first build only: they give all archived posts pages with their media. Set limit back to 25 and drop backfill_pages afterwards.",
+  "_comment": "The filename is the feed URL: this serves docs/linkedin-bradhaft.xml. Replaced sources/feed.json on 25 Sep 2026, because Reader kept LinkedIn's logo for the old URL; the archive was carried over and every post was given a page (backfill_pages, first build only).",
   "version": 1,
   "title": "Brad Haft's LinkedIn posts",
   "link": "https://www.linkedin.com/in/bradhaft/",
   "description": "Public LinkedIn posts, with their images and video, rebuilt weekly as RSS.",
   "actor": "apimaestro~linkedin-profile-posts",
-  "input": { "username": "bradhaft", "page_number": 1, "limit": 50 },
+  "input": {
+    "username": "bradhaft",
+    "page_number": 1,
+    "limit": 25
+  },
   "limit_field": "limit",
-  "max_items": 60,
-  "backfill_pages": true
+  "max_items": 60
 }
