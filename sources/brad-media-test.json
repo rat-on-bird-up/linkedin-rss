@@ -1,0 +1,11 @@
+{
+  "_comment": "TEMPORARY end-to-end test of media and post pages (25 Sep 2026). Delete this file and docs/brad-media-test* once checked in Reader.",
+  "version": 1,
+  "title": "brad haft — media test",
+  "link": "https://www.linkedin.com/in/bradhaft/",
+  "description": "End-to-end test of images, video and post pages.",
+  "actor": "apimaestro~linkedin-profile-posts",
+  "input": { "username": "bradhaft", "page_number": 1, "limit": 25 },
+  "limit_field": "limit",
+  "max_items": 60
+}
