@@ -192,6 +192,19 @@ a list, and `name[key=value]` keeps a value only when its field matches, which
 is how an image post's `media.url` is kept out of `video`. Set `"media": false`
 on a source to switch all of this off and get the old text-only entries.
 
+## Notes
+
+Findings that shaped this repo, kept in `notes/`:
+
+- `notes/reader-media-findings.md`: how Readwise Reader treats feeds. The
+  reading view is the linked page; thumbnails come from `media:thumbnail`;
+  Reader keeps the first icon and thumbnails it saw for a URL.
+- `notes/linkedin-post-data-sources.md`: where LinkedIn post data can come
+  from. Why not natively, the vendors compared, per-post against per-call
+  pricing, legal risk, and HarvestAPI's billing verified by trial.
+- `notes/2026-09-25-session-log.md`: what was done and decided on 25 Sep
+  2026, with the spend.
+
 ## Setup
 
 1. **Apify account.** Sign up at https://apify.com. Under Settings ➔
