@@ -24,8 +24,9 @@ Each source is a JSON file in `sources/`. A weekly GitHub Action calls that
 source's Apify actor, merges anything new into `docs/<slug>.xml`, and commits
 the result. Pages serves those files, and Readwise polls them like any feed.
 
-**The filename is the URL.** `sources/feed.json` builds `docs/feed.xml`, served
-at `/linkedin-rss/feed.xml`. Renaming a source file moves its feed and orphans
+**The filename is the URL.** `sources/linkedin-bradhaft.json` builds
+`docs/linkedin-bradhaft.xml`, served at `/linkedin-rss/linkedin-bradhaft.xml`.
+Renaming a source file moves its feed and orphans
 every subscriber, so the filename is the one thing that must never change. Every
 other field is presentation and safe to edit.
 
@@ -104,6 +105,7 @@ spending anything, and deleting a source file leaves the run green.
 | `timeout` | 300 | Seconds to wait for the actor |
 | `enabled` | true | Set false to pause a source without deleting its archive |
 | `media` | true | Copy images and video and give each new post a page here, see below |
+| `backfill_pages` | false | One-off: also give pages to entries already published. Readers see those entries again as new, so use it only to seed a feed nobody reads yet, then remove it |
 | `keys` | built-in guesses | Per-field parser overrides, see below |
 | `_anything` | | Ignored, so use it for comments |
 
@@ -160,8 +162,15 @@ What each entry carries:
   icon.
 
 Only entries not yet published get a page. Rewriting the link of an entry
-already out would make every reader import it a second time, so posts from
-before this change keep linking to the platform.
+already out would make every reader import it a second time. The exception is
+`backfill_pages`, for seeding a feed at a new URL from an old archive: it gives
+every entry a page, taking media from that run's fetch where the post is in it.
+
+Reader remembers what it first learned about a feed URL (its icon) and about
+each post URL (its thumbnail), even across unsubscribing and resubscribing. So a
+change of picture only reaches Reader on URLs it has not seen before. That is
+why Brad's feed moved from `feed.xml` to `linkedin-bradhaft.xml` on 25 Sep 2026
+rather than being fixed in place.
 
 Files belonging to a post that drops out of the feed's `max_items` window are
 deleted, so the site stays roughly the size of the last 60 posts. At Brad

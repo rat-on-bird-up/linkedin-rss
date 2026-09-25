@@ -433,6 +433,50 @@ def test_pruning():
         os.chdir(cwd)
 
 
+def test_backfill():
+    print("\npage backfill")
+    site = "https://o.github.io/r/"
+    opener = fake_opener({
+        "https://media.licdn.com/img1.jpg": (b"\xff\xd8one", "image/jpeg"),
+        "https://media.licdn.com/img2.jpg": (b"\xff\xd8two", "image/jpeg"),
+        "https://media.licdn.com/avatar.jpg": (b"\xff\xd8av", "image/jpeg"),
+    })
+    real_fetch = bf.fetch
+    bf.fetch = lambda source, token: [LINKEDIN_POST]
+    for backfill in (False, True):
+        cwd = in_temp_repo()
+        try:
+            os.makedirs("sources")
+            source = bf.load_source(write_source(
+                "sources", "s", link="https://www.linkedin.com/in/x/", backfill_pages=backfill,
+                input={"username": "u", "limit": 25}))
+            [fresh] = bf.normalise([LINKEDIN_POST], source, WHEN)
+            older = post("urn:li:activity:1111111", "https://www.linkedin.com/posts/old-1111111",
+                         date=datetime(2026, 7, 1, tzinfo=timezone.utc), text="an old one")
+            archived = dict(fresh, images=[], avatar="")
+            bf.write_feed(source, "docs/s.xml", [archived, older], site + "s.xml")
+            bf.build_one(source, "t", WHEN, site, opener)
+            entries = {p["guid"]: p for p in bf.read_existing("docs/s.xml")}
+            recent, old = entries[fresh["guid"]], entries["urn:li:activity:1111111"]
+            if not backfill:
+                check("without backfill, published entries keep their links",
+                      recent["link"] == fresh["link"] and old["link"].endswith("old-1111111"))
+            else:
+                check("with backfill, published entries get pages",
+                      recent["link"].startswith(site + "s/p/") and old["link"].startswith(site + "s/p/"))
+                check("a backfilled entry takes its media from this run's fetch",
+                      recent["thumb"].endswith("-1.jpg"))
+                check("an entry outside the fetch gets a text page with the avatar",
+                      old["thumb"].endswith("avatar.jpg"))
+                check("backfilled entries keep their identity (nothing duplicated)",
+                      len(entries) == 2)
+                check("the original link is kept as the origin",
+                      old["origin"] == "https://www.linkedin.com/posts/old-1111111")
+        finally:
+            os.chdir(cwd)
+    bf.fetch = real_fetch
+
+
 def test_media_switch():
     print("\nmedia switch")
     tmp = tempfile.mkdtemp()
@@ -454,6 +498,7 @@ def main():
         test_download_guards,
         test_post_pages,
         test_pruning,
+        test_backfill,
         test_media_switch,
         test_config_validation,
         test_path_containment,

@@ -218,12 +218,16 @@ def load_source(path):
     _require(isinstance(media, bool), path,
              '"media" must be true or false, not a string')
 
+    backfill = raw.get("backfill_pages", False)
+    _require(isinstance(backfill, bool), path,
+             '"backfill_pages" must be true or false, not a string')
+
     for field in raw:
         if field.startswith("_"):
             continue
         if field not in {"version", "title", "link", "description", "actor", "input",
                          "limit_field", "max_items", "timeout", "max_charge_usd",
-                         "enabled", "keys", "media"}:
+                         "enabled", "keys", "media", "backfill_pages"}:
             print(f"  warning: {path}: ignoring unrecognised field {field!r}")
 
     return {
@@ -240,6 +244,7 @@ def load_source(path):
         "cap": cap,
         "enabled": enabled,
         "media": media,
+        "backfill_pages": backfill,
         "keys": keys,
     }
 
@@ -1128,11 +1133,22 @@ def build_one(source, token, run_started, site_url, opener=None):
         if refresh_avatar(avatar, media_dir, opener):
             avatar_url = f"{site_url}{source['slug']}/m/avatar.jpg"
         # Only entries not yet published get a page. Changing the link of one
-        # already out would make every reader import it a second time.
+        # already out would make every reader import it a second time, so
+        # backfill_pages, which does exactly that, is for a feed nobody reads
+        # yet: a new URL being seeded from an old archive.
         archived = {identity(p, source["link"]) for p in existing}
+        fetched = {identity(p, source["link"]): p for p in fresh}
+        page_prefix = f"{site_url}{source['slug']}/p/"
         for post in merged:
-            if identity(post, source["link"]) in archived:
-                continue
+            key = identity(post, source["link"])
+            if key in archived:
+                if not source.get("backfill_pages") or post["link"].startswith(page_prefix):
+                    continue
+                # An archived entry keeps its own text and date; its media can
+                # only come from this run's fetch, since the archive holds none.
+                match = fetched.get(key, {})
+                for field in ("images", "video", "avatar", "quote"):
+                    post[field] = match.get(field) or post.get(field) or ("" if field != "images" else [])
             counts = publish_post_page(source, post, site_url, avatar_url, opener)
             media["pages"] += 1
             media["images"] += counts["images"]

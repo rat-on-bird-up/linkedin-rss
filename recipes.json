@@ -337,7 +337,7 @@
       },
       "user_notes": [
         "$0.125 per refresh at limit 25.",
-        "This is the actor the existing sources/feed.json already uses, so it is the best-proven recipe in this file.",
+        "This is the actor the existing sources/linkedin-bradhaft.json already uses, so it is the best-proven recipe in this file.",
         "The README shows a {\"data\":{\"posts\":[...]}} envelope. That is WRONG; the real dataset is flat, one item per post. Ignore the README.",
         "Keep page_number at 1. Incrementing it walks backwards into history and republishes old posts as new.",
         "A bare reshare with no added commentary has empty text, which yields both an empty title and an empty description. Expect occasional blank entries."
