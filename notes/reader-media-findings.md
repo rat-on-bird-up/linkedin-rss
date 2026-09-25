@@ -51,6 +51,16 @@ Brad's profile picture.
 9. **Reader picked up new entries about 30 minutes after they were published**
    on the live feed, and within seconds on a fresh subscription.
 
+10. **Reader remembers a feed URL and a post URL, even across unsubscribing.**
+    On 25 Sep, after `feed.xml` gained a channel `<image>`, Brad's feed was
+    removed and re-added in Reader. The feed icon stayed the LinkedIn logo, and
+    the 5 re-imported entries kept the LinkedIn logo as their thumbnail, even
+    though the lab feeds (new URLs, with LinkedIn links carrying `?lab=x`) got the
+    channel image. So Reader keeps what it first learned about a feed URL and
+    about each post URL. A new picture only shows on a feed URL or a post URL
+    Reader has not seen before. Re-subscribing also drops the feed's folder
+    and custom name.
+
 ## Facts about the source data
 
 - The actor's media URLs are signed: images expire about three weeks after the
