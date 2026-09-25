@@ -36,6 +36,12 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Make sure ffmpeg is available
+        # Cuts a still from each video for the reader's thumbnail and shrinks
+        # the profile picture. Optional: without it a video post shows the
+        # profile picture instead, and nothing else changes.
+        run: command -v ffmpeg || { sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends ffmpeg; } || true
+
       - name: Run the regression tests
         # No network, a couple of seconds. Every case here is a fault that once
         # lost or corrupted a feed, so this runs before anything is spent.

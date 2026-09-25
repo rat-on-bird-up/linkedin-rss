@@ -43,7 +43,8 @@
       "enabled": "optional boolean, default true. Set false to pause a feed without deleting it.",
       "link": "optional http or https URL, the human page the feed represents",
       "description": "optional string",
-      "keys": "optional object; only the five names id, title, text, url, date are accepted",
+      "keys": "optional object; accepted names are id, title, text, url, date and the media chains images, video, avatar, quote",
+      "media": "optional boolean, default true. Copies each new post's images and video into docs/<slug>/m/, gives it a page at docs/<slug>/p/<id>.html, and links the entry there. The media key chains default to the LinkedIn profile actor's shape; other actors get text-only pages until their chains are mapped. See README, Images, video and post pages.",
       "_anything": "any key starting with an underscore is ignored, which is how you write comments in JSON"
     },
     "default_key_chains": {
@@ -52,7 +53,12 @@
       "title": [],
       "text": ["text", "postText", "content", "post_text", "description"],
       "url": ["url", "postUrl", "post_url", "link", "postLink"],
-      "date": ["postedAtISO", "posted_at.date", "posted_at", "postedAt", "publishedAt", "date", "time"]
+      "date": ["postedAtISO", "posted_at.date", "posted_at", "postedAt", "publishedAt", "date", "time"],
+      "images": ["media[type=image].images.*.url", "reshared_post.media[type=image].images.*.url"],
+      "video": ["media[type=video].url", "reshared_post.media[type=video].url"],
+      "avatar": ["author.profile_picture"],
+      "quote": ["reshared_post.text"],
+      "_media_note": "The media chains collect every URL the first matching path reaches. '*' fans out over a list; name[key=value] keeps a value only when its field matches."
     },
     "empty_title_chain_is_deliberate": "title defaults to an empty chain, which tells the builder to cut a title from the first 90 characters of the text. That is right for every social platform here: posts, tweets and captions have no title. Do not add a title override to a social recipe.",
     "a_missing_date_fails_silently": "This is the failure mode to fear. If the date chain misses, the builder does not error. It stamps each item with the build time, so the feed re-dates itself on every run and old posts resurface as new for every subscriber. Check the date mapping harder than the other four.",

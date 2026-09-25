@@ -24,6 +24,8 @@ import html
 import json
 import os
 import re
+import shutil
+import subprocess
 import sys
 import urllib.error
 import urllib.parse
@@ -83,7 +85,42 @@ BUILTIN_KEYS = {
         "date",
         "time",
     ],
+    # Media. '*' fans out over a list and name[key=value] keeps a value only
+    # when that field matches, so an image post's media.url (a copy of its
+    # first image) is never mistaken for a video. Unlike the fields above,
+    # these collect every URL the first matching path yields.
+    "images": [
+        "media[type=image].images.*.url",
+        "reshared_post.media[type=image].images.*.url",
+    ],
+    "video": ["media[type=video].url", "reshared_post.media[type=video].url"],
+    "avatar": ["author.profile_picture"],
+    # A repost's own text is often empty; the post it quotes lives here.
+    "quote": ["reshared_post.text"],
 }
+
+# LinkedIn's media host answers Python's default User-Agent with a 403, and any
+# ordinary one with a 200. Say who we are rather than pretend to be a browser.
+MEDIA_USER_AGENT = (
+    "Mozilla/5.0 (compatible; linkedin-rss feed builder; "
+    "+https://github.com/rat-on-bird-up/linkedin-rss)"
+)
+MAX_IMAGE_BYTES = 15 * 1024 * 1024
+# GitHub refuses files over 100 MB and warns from 50 MB. A longer video keeps
+# its link to the original post instead.
+MAX_VIDEO_BYTES = 50 * 1024 * 1024
+MAX_IMAGES_PER_POST = 10
+MEDIA_TYPES = {
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+    "image/webp": ".webp",
+    "image/gif": ".gif",
+    "video/mp4": ".mp4",
+}
+
+NS_MEDIA = "http://search.yahoo.com/mrss/"
+NS_CONTENT = "http://purl.org/rss/1.0/modules/content/"
+NS_ATOM = "http://www.w3.org/2005/Atom"
 
 
 class SourceError(Exception):
@@ -177,12 +214,16 @@ def load_source(path):
     _require(isinstance(enabled, bool), path,
              '"enabled" must be true or false, not a string')
 
+    media = raw.get("media", True)
+    _require(isinstance(media, bool), path,
+             '"media" must be true or false, not a string')
+
     for field in raw:
         if field.startswith("_"):
             continue
         if field not in {"version", "title", "link", "description", "actor", "input",
                          "limit_field", "max_items", "timeout", "max_charge_usd",
-                         "enabled", "keys"}:
+                         "enabled", "keys", "media"}:
             print(f"  warning: {path}: ignoring unrecognised field {field!r}")
 
     return {
@@ -198,6 +239,7 @@ def load_source(path):
         "max_charge_usd": float(charge),
         "cap": cap,
         "enabled": enabled,
+        "media": media,
         "keys": keys,
     }
 
@@ -237,20 +279,64 @@ def feed_path(slug):
 # --- Field extraction --------------------------------------------------------
 
 
+_FILTER_RE = re.compile(r"^([^\[\]]*)\[([^=\[\]]+)=([^\[\]]*)\]$")
+
+
+def dig_all(item, path):
+    """Walk a dotted path and return every value it reaches.
+
+    Numeric segments index lists, '*' fans out over every element of a list,
+    and name[key=value] keeps the value only when its key field equals value.
+    """
+    current = [item]
+    for segment in path.split("."):
+        condition = None
+        match = _FILTER_RE.match(segment)
+        if match:
+            segment, condition = match.group(1), (match.group(2), match.group(3))
+        reached = []
+        for node in current:
+            if segment == "*":
+                if isinstance(node, list):
+                    reached.extend(v for v in node if v is not None)
+                continue
+            if isinstance(node, dict):
+                value = node.get(segment)
+            elif isinstance(node, list) and segment.isdigit():
+                index = int(segment)
+                value = node[index] if index < len(node) else None
+            else:
+                value = None
+            if value is None:
+                continue
+            if condition and not (
+                isinstance(value, dict) and str(value.get(condition[0])) == condition[1]
+            ):
+                continue
+            reached.append(value)
+        current = reached
+        if not current:
+            return []
+    return current
+
+
 def dig(item, path):
     """Walk a dotted path. Numeric segments index lists. None if absent."""
-    current = item
-    for segment in path.split("."):
-        if isinstance(current, dict):
-            current = current.get(segment)
-        elif isinstance(current, list) and segment.isdigit():
-            index = int(segment)
-            current = current[index] if index < len(current) else None
-        else:
-            return None
-        if current is None:
-            return None
-    return current
+    found = dig_all(item, path)
+    return found[0] if found else None
+
+
+def collect_urls(item, paths):
+    """Every http(s) URL reached by the first path that reaches any."""
+    for path in paths:
+        urls = []
+        for value in dig_all(item, path):
+            if isinstance(value, str) and value.startswith(("https://", "http://")):
+                if value not in urls:
+                    urls.append(value)
+        if urls:
+            return urls
+    return []
 
 
 def pick(item, paths):
@@ -447,13 +533,22 @@ def normalise(raw_items, source, run_started):
             # newest first. Calling now() per item would make each one *later*
             # than the last and publish the source in reverse.
             date = run_started - timedelta(seconds=index)
+        video = collect_urls(raw, keys["video"])
+        avatar = collect_urls(raw, keys["avatar"])
         posts.append(
             {
                 "guid": guid,
                 "title": str(pick(raw, keys["title"]) or make_title(text)),
                 "description": str(text),
                 "link": link,
+                # The post on the platform. link may later move to a page we
+                # host, and identity keeps following this.
+                "origin": link,
                 "date": date,
+                "images": collect_urls(raw, keys["images"])[:MAX_IMAGES_PER_POST],
+                "video": video[0] if video else "",
+                "avatar": avatar[0] if avatar else "",
+                "quote": str(pick(raw, keys["quote"]) or ""),
             }
         )
     return posts
@@ -488,13 +583,22 @@ def read_existing(path):
         link = normalise_url(text_of("link")) if text_of("link") else ""
         guid = text_of("guid") or link
         date = parse_date(text_of("pubDate"))
+        via = next(
+            (node.get("href", "") for node in item.findall(f"{{{NS_ATOM}}}link")
+             if node.get("rel") == "via"),
+            "",
+        )
+        thumb = item.find(f"{{{NS_MEDIA}}}thumbnail")
         existing.append(
             {
                 "guid": normalise_url(guid) if guid.startswith("http") else guid,
                 "title": text_of("title"),
                 "description": text_of("description"),
                 "link": link,
+                "origin": normalise_url(via) if via else link,
                 "date": date or datetime(1970, 1, 1, tzinfo=timezone.utc),
+                "html": text_of(f"{{{NS_CONTENT}}}encoded"),
+                "thumb": thumb.get("url", "") if thumb is not None else "",
             }
         )
     return existing
@@ -508,8 +612,12 @@ def identity(post, fallback_link=""):
     entire archive: every post reappears under its new guid alongside its old
     one. Posts with no link of their own fall back to the source link, which is
     shared, so those key on guid instead.
+
+    The link that counts is the original post's. Once a post gets a page of
+    its own here, <link> points at that page and the original is kept as the
+    item's via link, so identity does not move when the page appears.
     """
-    link = post.get("link") or ""
+    link = post.get("origin") or post.get("link") or ""
     if link and link != fallback_link:
         return ("link", link)
     return ("guid", post["guid"])
@@ -567,11 +675,12 @@ def merge(existing, fresh, max_items, fallback_link=""):
     return kept, added, evicted
 
 
-def write_feed(source, path, posts, self_url):
+def write_feed(source, path, posts, self_url, image_url=""):
     """Write atomically, and only after proving the result re-parses."""
     lines = [
         '<?xml version="1.0" encoding="UTF-8"?>',
-        '<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">',
+        f'<rss version="2.0" xmlns:atom="{NS_ATOM}" xmlns:media="{NS_MEDIA}" '
+        f'xmlns:content="{NS_CONTENT}">',
         "  <channel>",
         f"    <title>{xml_text(source['title'])}</title>",
         f"    <link>{xml_text(source['link'] or self_url)}</link>",
@@ -582,6 +691,16 @@ def write_feed(source, path, posts, self_url):
         # inactivity clock that disables scheduled workflows.
         f"    <lastBuildDate>{format_datetime(datetime.now(timezone.utc))}</lastBuildDate>",
     ]
+    if image_url:
+        # Readwise Reader shows this beside every entry that has no thumbnail
+        # of its own, ahead of the generic logo on the post's own page.
+        lines += [
+            "    <image>",
+            f"      <url>{xml_text(image_url)}</url>",
+            f"      <title>{xml_text(source['title'])}</title>",
+            f"      <link>{xml_text(source['link'] or self_url)}</link>",
+            "    </image>",
+        ]
     for post in posts:
         lines += [
             "    <item>",
@@ -590,8 +709,18 @@ def write_feed(source, path, posts, self_url):
             f"      <guid isPermaLink=\"false\">{xml_text(post['guid'])}</guid>",
             f"      <pubDate>{format_datetime(post['date'])}</pubDate>",
             f"      <description>{xml_text(post['description'])}</description>",
-            "    </item>",
         ]
+        if post.get("html"):
+            lines.append(f"      <content:encoded>{xml_text(post['html'])}</content:encoded>")
+        if post.get("thumb"):
+            # Reader takes an entry's thumbnail from media:thumbnail and
+            # ignores images inside the body; it hotlinks the URL rather than
+            # copying it, so this must be one that never expires.
+            lines.append(f'      <media:thumbnail url="{xml_text(post["thumb"])}"/>')
+        origin = post.get("origin") or ""
+        if origin and origin != post["link"]:
+            lines.append(f'      <atom:link rel="via" href="{xml_text(origin)}"/>')
+        lines.append("    </item>")
     lines += ["  </channel>", "</rss>", ""]
 
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
@@ -607,6 +736,266 @@ def write_feed(source, path, posts, self_url):
         if os.path.exists(temporary):
             os.remove(temporary)
         raise
+
+
+# --- Media and post pages ----------------------------------------------------
+#
+# Each new post gets a page of its own under docs/<slug>/p/, with its images
+# and video copied into docs/<slug>/m/, and the feed entry links to that page.
+# Found by testing against Readwise Reader on 25 Sep 2026:
+#
+# - Reader shows the page an entry links to, not the feed's own text. Linked to
+#   LinkedIn, it gets whatever LinkedIn serves that day: images mostly, video
+#   only sometimes. Linked to a page here, it shows exactly this page, video
+#   included.
+# - The media URLs the actor returns are signed and expire: images in about
+#   three weeks, video in seven days. Reader hotlinks rather than copying, so
+#   only a copy here stays visible.
+
+
+def media_dirs(slug):
+    """docs/<slug>/m and docs/<slug>/p, refusing anything outside docs/."""
+    root = os.path.realpath(DOCS_DIR)
+    base = os.path.realpath(os.path.join(DOCS_DIR, slug))
+    if os.path.commonpath([root, base]) != root or base == root:
+        raise ConfigError(f"{slug}: media directory resolves outside {DOCS_DIR}/")
+    return os.path.join(DOCS_DIR, slug, "m"), os.path.join(DOCS_DIR, slug, "p")
+
+
+def file_id(guid):
+    """A short, filename-safe id for a post: its trailing number, or a hash."""
+    match = re.search(r"(\d{6,})$", str(guid))
+    if match:
+        return match.group(1)
+    return hashlib.sha1(str(guid).encode("utf-8", "replace")).hexdigest()[:16]
+
+
+def _describe(url):
+    """Host and path only. Signed query strings stay out of public logs."""
+    parts = urllib.parse.urlsplit(url)
+    return f"{parts.netloc}{parts.path[:60]}"
+
+
+def download(url, stem, kind, limit, opener=None):
+    """Save url as stem + extension. Returns the path written, or None.
+
+    kind is 'image' or 'video'; anything served as another type is refused,
+    as is anything over limit bytes. Never raises: a missing picture must not
+    cost the feed its week.
+    """
+    if not url.startswith("https://"):
+        print(f"  media: skipped non-https {kind} {_describe(url)}")
+        return None
+    opener = opener or urllib.request.urlopen
+    request = urllib.request.Request(url, headers={"User-Agent": MEDIA_USER_AGENT})
+    temporary = stem + ".tmp"
+    try:
+        with opener(request, timeout=120) as response:
+            content_type = (response.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+            extension = MEDIA_TYPES.get(content_type)
+            if not extension or not content_type.startswith(kind + "/"):
+                print(f"  media: skipped {kind} served as {content_type or 'nothing'}: {_describe(url)}")
+                return None
+            declared = response.headers.get("Content-Length")
+            if declared and declared.isdigit() and int(declared) > limit:
+                print(f"  media: skipped {kind} over {limit:,} bytes: {_describe(url)}")
+                return None
+            os.makedirs(os.path.dirname(os.path.abspath(stem)), exist_ok=True)
+            size = 0
+            with open(temporary, "wb") as handle:
+                while True:
+                    chunk = response.read(1 << 16)
+                    if not chunk:
+                        break
+                    size += len(chunk)
+                    if size > limit:
+                        raise ValueError(f"over {limit:,} bytes")
+                    handle.write(chunk)
+        if size == 0:
+            raise ValueError("empty response")
+        final = stem + extension
+        os.replace(temporary, final)
+        return final
+    except Exception as error:  # noqa: BLE001 - media is best effort
+        print(f"  media: could not fetch {kind} {_describe(url)}: {redact(error)}")
+        return None
+    finally:
+        if os.path.exists(temporary):
+            os.remove(temporary)
+
+
+def run_ffmpeg(arguments):
+    """Run ffmpeg if it is installed. True on success, False otherwise."""
+    binary = shutil.which("ffmpeg")
+    if not binary:
+        return False
+    try:
+        subprocess.run([binary, "-y", "-loglevel", "error", *arguments],
+                       check=True, timeout=180, capture_output=True)
+        return True
+    except (subprocess.SubprocessError, OSError) as error:
+        print(f"  media: ffmpeg failed: {error}")
+        return False
+
+
+def make_poster(video_path, poster_path):
+    """A still for a video. The first frame is often black, so let ffmpeg's
+    thumbnail filter pick a representative one from the opening seconds."""
+    ok = run_ffmpeg(["-i", video_path, "-vf", "thumbnail=300,scale='min(1280,iw)':-2",
+                     "-frames:v", "1", "-q:v", "3", poster_path])
+    return ok and os.path.exists(poster_path) and os.path.getsize(poster_path) > 0
+
+
+def refresh_avatar(url, media_dir, opener=None):
+    """Keep docs/<slug>/m/avatar.jpg current. Returns its path, or ''."""
+    target = os.path.join(media_dir, "avatar.jpg")
+    if url:
+        fetched = download(url, os.path.join(media_dir, "avatar-new"), "image",
+                           MAX_IMAGE_BYTES, opener)
+        if fetched:
+            # Profile pictures arrive at 800px and ~800 KB; an icon needs 400.
+            if not run_ffmpeg(["-i", fetched, "-vf", "scale='min(400,iw)':-2",
+                               "-q:v", "3", target]):
+                os.replace(fetched, target)
+            if os.path.exists(fetched):
+                os.remove(fetched)
+    return target if os.path.exists(target) else ""
+
+
+def paragraphs(text):
+    return "".join(
+        f"<p>{html.escape(strip_illegal_xml(line.strip()))}</p>"
+        for line in str(text).replace("\r", "").split("\n")
+        if line.strip()
+    )
+
+
+def render_body(post, images, video, poster):
+    """The post as an HTML fragment: the page's article and content:encoded."""
+    parts = [paragraphs(post["description"])]
+    if post.get("quote"):
+        parts.append(f"<blockquote>{paragraphs(post['quote'])}</blockquote>")
+    for url in images:
+        parts.append(f'<figure><img src="{html.escape(url)}" alt=""></figure>')
+    if video:
+        poster_attr = f' poster="{html.escape(poster)}"' if poster else ""
+        parts.append(
+            f'<figure><video controls preload="metadata"{poster_attr}>'
+            f'<source src="{html.escape(video)}" type="video/mp4"></video></figure>'
+            f'<p><a href="{html.escape(video)}">▶ Play the video</a></p>'
+        )
+    origin = post.get("origin") or ""
+    if origin.startswith(("https://", "http://")):
+        parts.append(f'<p><a href="{html.escape(origin)}">View the original post</a></p>')
+    return "".join(parts)
+
+
+def render_page(source, post, body, page_url, thumb):
+    title = html.escape(strip_illegal_xml(post["title"]))
+    summary = html.escape(strip_illegal_xml(" ".join(post["description"].split())[:200]))
+    image_meta = f'\n<meta property="og:image" content="{html.escape(thumb)}">' if thumb else ""
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{title}</title>
+<meta property="og:type" content="article">
+<meta property="og:title" content="{title}">
+<meta property="og:description" content="{summary}">{image_meta}
+<meta property="article:published_time" content="{post['date'].isoformat()}">
+<link rel="canonical" href="{html.escape(page_url)}">
+<style>
+  body {{ font: 17px/1.6 system-ui, sans-serif; max-width: 40rem; margin: 2rem auto; padding: 0 1rem; }}
+  img, video {{ max-width: 100%; height: auto; }}
+  figure {{ margin: 1.5rem 0; }}
+  blockquote {{ border-left: 3px solid #ccc; margin: 1rem 0; padding-left: 1rem; color: #555; }}
+  .meta {{ color: #777; font-size: .9rem; }}
+</style>
+</head>
+<body>
+<article>
+<h1>{title}</h1>
+<p class="meta">{html.escape(source['title'])} · {post['date']:%d %b %Y}</p>
+{body}
+</article>
+</body>
+</html>
+"""
+
+
+def publish_post_page(source, post, site_url, avatar_url, opener=None):
+    """Copy a post's media here, write its page, and point the entry at it.
+
+    Whatever fails, the entry is still published: without media it keeps its
+    text, and without a page it keeps its original link.
+    """
+    media_dir, page_dir = media_dirs(source["slug"])
+    base = f"{site_url}{source['slug']}/"
+    pid = file_id(post["guid"])
+    counts = {"images": 0, "video": 0}
+
+    images = []
+    for number, url in enumerate(post.get("images") or [], 1):
+        saved = download(url, os.path.join(media_dir, f"{pid}-{number}"), "image",
+                         MAX_IMAGE_BYTES, opener)
+        if saved:
+            images.append(base + "m/" + os.path.basename(saved))
+    counts["images"] = len(images)
+
+    video = poster = ""
+    if post.get("video"):
+        saved = download(post["video"], os.path.join(media_dir, pid), "video",
+                         MAX_VIDEO_BYTES, opener)
+        if saved:
+            video = base + "m/" + os.path.basename(saved)
+            counts["video"] = 1
+            poster_path = os.path.join(media_dir, f"{pid}-poster.jpg")
+            if make_poster(saved, poster_path):
+                poster = base + "m/" + os.path.basename(poster_path)
+
+    thumb = (images[0] if images else "") or poster or avatar_url
+    page_url = f"{base}p/{pid}.html"
+    body = render_body(post, images, video, poster)
+    try:
+        os.makedirs(page_dir, exist_ok=True)
+        page_path = os.path.join(page_dir, f"{pid}.html")
+        with open(page_path + ".tmp", "w", encoding="utf-8", newline="\n") as handle:
+            handle.write(render_page(source, post, body, page_url, thumb))
+        os.replace(page_path + ".tmp", page_path)
+    except OSError as error:
+        print(f"  media: could not write the page for {pid}: {error}")
+        post["thumb"] = thumb
+        return counts
+
+    post["origin"] = post.get("origin") or post["link"]
+    post["link"] = page_url
+    post["html"] = body
+    post["thumb"] = thumb
+    return counts
+
+
+def prune_media(slug, posts, site_url):
+    """Delete pages and media belonging to posts no longer in the feed."""
+    media_dir, page_dir = media_dirs(slug)
+    prefix = f"{site_url}{slug}/p/"
+    in_use = {
+        post["link"][len(prefix):-len(".html")]
+        for post in posts
+        if post["link"].startswith(prefix) and post["link"].endswith(".html")
+    }
+    removed = 0
+    for directory in (media_dir, page_dir):
+        if not os.path.isdir(directory):
+            continue
+        for name in os.listdir(directory):
+            if name.startswith("avatar"):
+                continue
+            owner = re.split(r"[-.]", name, maxsplit=1)[0]
+            if owner not in in_use:
+                os.remove(os.path.join(directory, name))
+                removed += 1
+    return removed
 
 
 # --- Site outputs ------------------------------------------------------------
@@ -714,7 +1103,7 @@ of them in a reader.</p>
 # --- Build -------------------------------------------------------------------
 
 
-def build_one(source, token, run_started, site_url):
+def build_one(source, token, run_started, site_url, opener=None):
     path = feed_path(source["slug"])
     self_url = f"{site_url}{source['slug']}.xml"
 
@@ -730,12 +1119,34 @@ def build_one(source, token, run_started, site_url):
     merged, added, evicted = merge(
         existing, fresh, source["max_items"], source["link"]
     )
-    write_feed(source, path, merged, self_url)
+
+    avatar_url = ""
+    media = {"pages": 0, "images": 0, "video": 0, "pruned": 0}
+    if source["media"]:
+        media_dir, _ = media_dirs(source["slug"])
+        avatar = next((p.get("avatar") for p in fresh if p.get("avatar")), "")
+        if refresh_avatar(avatar, media_dir, opener):
+            avatar_url = f"{site_url}{source['slug']}/m/avatar.jpg"
+        # Only entries not yet published get a page. Changing the link of one
+        # already out would make every reader import it a second time.
+        archived = {identity(p, source["link"]) for p in existing}
+        for post in merged:
+            if identity(post, source["link"]) in archived:
+                continue
+            counts = publish_post_page(source, post, site_url, avatar_url, opener)
+            media["pages"] += 1
+            media["images"] += counts["images"]
+            media["video"] += counts["video"]
+
+    write_feed(source, path, merged, self_url, avatar_url)
+    if source["media"]:
+        media["pruned"] = prune_media(source["slug"], merged, site_url)
     return {
         "fetched": len(raw_items),
         "items": len(merged),
         "added": added,
         "evicted": evicted,
+        "media": media,
     }
 
 
@@ -817,6 +1228,12 @@ def main():
                 f"{slug}: fetched {outcome['fetched']}, added {outcome['added']}, "
                 f"feed holds {outcome['items']}{note}"
             )
+            media = outcome.pop("media")
+            if source["media"]:
+                print(
+                    f"{slug}: media: {media['pages']} new page(s), {media['images']} "
+                    f"image(s), {media['video']} video(s), {media['pruned']} old file(s) removed"
+                )
             results.append(
                 {
                     **source,

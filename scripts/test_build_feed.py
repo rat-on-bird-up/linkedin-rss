@@ -235,8 +235,226 @@ def test_source_isolation():
         os.chdir(cwd)
 
 
+class FakeResponse:
+    def __init__(self, body, content_type, length=None):
+        self._body = body
+        self.headers = {"Content-Type": content_type}
+        if length is not None:
+            self.headers["Content-Length"] = str(length)
+
+    def read(self, size=-1):
+        chunk, self._body = self._body[:size], self._body[size:]
+        return chunk
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+def fake_opener(table):
+    """urlopen stand-in: table maps URL -> (body, content_type) or an Exception."""
+    seen = []
+
+    def opener(request, timeout=None):
+        url = request.full_url
+        seen.append((url, request.get_header("User-agent")))
+        outcome = table.get(url)
+        if isinstance(outcome, Exception) or outcome is None:
+            raise outcome or OSError("no route")
+        return FakeResponse(*outcome)
+
+    opener.seen = seen
+    return opener
+
+
+LINKEDIN_POST = {
+    "urn": {"activity_urn": "7508261139470938112"},
+    "full_urn": "urn:li:activity:7508261139470938112",
+    "text": "line one\n\nline <two> & three",
+    "url": "https://www.linkedin.com/posts/x-activity-7508261139470938112-O7dC?rcm=abc",
+    "posted_at": {"date": "2026-09-22 20:29:10"},
+    "author": {"profile_picture": "https://media.licdn.com/avatar.jpg"},
+    "media": {"type": "image", "url": "https://media.licdn.com/img1.jpg",
+              "images": [{"url": "https://media.licdn.com/img1.jpg"},
+                         {"url": "https://media.licdn.com/img2.jpg"}]},
+}
+
+
+def in_temp_repo():
+    """chdir into a scratch directory with docs/ and return the old cwd."""
+    tmp = tempfile.mkdtemp()
+    cwd = os.getcwd()
+    os.chdir(tmp)
+    os.makedirs("docs")
+    return cwd
+
+
+def test_media_extraction():
+    print("\nmedia extraction")
+    check("'*' fans out over a list",
+          bf.dig_all({"a": [{"u": 1}, {"u": 2}]}, "a.*.u") == [1, 2])
+    check("a [key=value] filter keeps a match",
+          bf.dig({"m": {"type": "video", "url": "v"}}, "m[type=video].url") == "v")
+    check("a [key=value] filter drops a mismatch",
+          bf.dig({"m": {"type": "image", "url": "i"}}, "m[type=video].url") is None)
+    source = {"slug": "s", "link": "https://src/", "keys": bf.BUILTIN_KEYS}
+    [p] = bf.normalise([LINKEDIN_POST], source, WHEN)
+    check("every image of a post is collected", p["images"] == [
+        "https://media.licdn.com/img1.jpg", "https://media.licdn.com/img2.jpg"])
+    # An image post also carries media.url; reading that as a video would
+    # download a picture as a video.
+    check("an image post's media.url is not taken for a video", p["video"] == "")
+    check("the author's picture is picked up", p["avatar"].endswith("avatar.jpg"))
+    check("origin starts as the normalised post URL", p["origin"] == p["link"]
+          and "rcm=" not in p["origin"])
+    video_post = dict(LINKEDIN_POST, media={"type": "video", "url": "https://dms.licdn.com/v.mp4"})
+    [v] = bf.normalise([video_post], source, WHEN)
+    check("a video post yields its video", v["video"] == "https://dms.licdn.com/v.mp4"
+          and v["images"] == [])
+    repost = {"urn": "urn:li:activity:1234567", "text": "", "url": "https://l/p",
+              "reshared_post": {"text": "the original",
+                                "media": {"type": "video", "url": "https://dms.licdn.com/r.mp4"}}}
+    [r] = bf.normalise([repost], source, WHEN)
+    check("a bare repost takes the quoted post's media and text",
+          r["video"].endswith("r.mp4") and r["quote"] == "the original")
+
+
+def test_download_guards():
+    print("\nmedia download guards")
+    cwd = in_temp_repo()
+    try:
+        opener = fake_opener({
+            "https://h/img": (b"\xff\xd8jpeg", "image/jpeg"),
+            "https://h/html": (b"<html>", "text/html"),
+            "https://h/big": (b"x" * 50, "video/mp4"),
+            "https://h/liar": (b"x" * 50, "video/mp4", 10),
+        })
+        saved = bf.download("https://h/img", "docs/s/m/a", "image", 100, opener)
+        check("an image is saved with the extension its type implies",
+              saved and saved.endswith("a.jpg") and os.path.exists(saved))
+        check("a real User-Agent is sent (LinkedIn 403s Python's default)",
+              opener.seen and "Python-urllib" not in (opener.seen[0][1] or "Python-urllib"))
+        check("a page served as HTML is refused",
+              bf.download("https://h/html", "docs/s/m/b", "image", 100, opener) is None)
+        check("an image is refused where a video is expected",
+              bf.download("https://h/img", "docs/s/m/c", "video", 100, opener) is None)
+        check("an oversized file is refused",
+              bf.download("https://h/big", "docs/s/m/d", "video", 10, opener) is None)
+        check("a file larger than its declared length is still cut off",
+              bf.download("https://h/liar", "docs/s/m/e", "video", 20, opener) is None)
+        check("plain http is refused",
+              bf.download("http://h/img", "docs/s/m/f", "image", 100, opener) is None)
+        check("a network error returns None instead of raising",
+              bf.download("https://h/missing", "docs/s/m/g", "image", 100, opener) is None)
+        leftovers = [n for n in os.listdir("docs/s/m") if n.endswith(".tmp")]
+        check("no partial download is left behind", not leftovers, str(leftovers))
+    finally:
+        os.chdir(cwd)
+
+
+def test_post_pages():
+    print("\npost pages")
+    cwd = in_temp_repo()
+    try:
+        site = "https://o.github.io/r/"
+        source = {"slug": "s", "title": "Feed <T>", "link": "https://src/", "description": "d",
+                  "keys": bf.BUILTIN_KEYS}
+        [p] = bf.normalise([LINKEDIN_POST], source, WHEN)
+        original = p["link"]
+        opener = fake_opener({
+            "https://media.licdn.com/img1.jpg": (b"\xff\xd8one", "image/jpeg"),
+            "https://media.licdn.com/img2.jpg": OSError("expired"),
+        })
+        counts = bf.publish_post_page(source, p, site, "https://o.github.io/r/s/m/avatar.jpg", opener)
+        page = "docs/s/p/7508261139470938112.html"
+        check("the page is written under docs/<slug>/p/", os.path.exists(page))
+        check("the entry now links to that page",
+              p["link"] == site + "s/p/7508261139470938112.html")
+        check("the original URL is kept as the origin", p["origin"] == original)
+        check("a failed image does not stop the rest", counts["images"] == 1)
+        check("the thumbnail is the post's own first image",
+              p["thumb"] == site + "s/m/7508261139470938112-1.jpg")
+        body = open(page, encoding="utf-8").read()
+        check("post text is escaped in the page", "&lt;two&gt; &amp; three" in body
+              and "<two>" not in body)
+        check("the page links back to the original post", html_has(body, original))
+
+        [t] = bf.normalise([dict(LINKEDIN_POST, media=None)], source, WHEN)
+        bf.publish_post_page(source, t, site, "https://o.github.io/r/s/m/avatar.jpg", fake_opener({}))
+        check("a text-only post falls back to the avatar thumbnail",
+              t["thumb"].endswith("avatar.jpg"))
+
+        # Round trip: what goes into the feed must come back out intact, or
+        # the next run loses the page link, thumbnail or identity.
+        path = "docs/s.xml"
+        bf.write_feed(source, path, [p], site + "s.xml", site + "s/m/avatar.jpg")
+        [back] = bf.read_existing(path)
+        check("the page link survives a round trip", back["link"] == p["link"])
+        check("the origin survives a round trip", back["origin"] == original)
+        check("the thumbnail survives a round trip", back["thumb"] == p["thumb"])
+        check("the HTML body survives a round trip", back["html"] == p["html"])
+        check("the channel image is written", "<image>" in open(path, encoding="utf-8").read())
+
+        # The same post fetched again next week must match its archived entry,
+        # even though the archived one now links to a page here.
+        [again] = bf.normalise([LINKEDIN_POST], source, WHEN)
+        kept, added, _ = bf.merge([back], [again], 60, source["link"])
+        check("a republished post is not duplicated", len(kept) == 1 and added == 0,
+              f"kept={len(kept)} added={added}")
+        check("the archived entry, with its page, is the one kept",
+              kept[0]["link"] == p["link"])
+    finally:
+        os.chdir(cwd)
+
+
+def html_has(body, url):
+    return f'href="{url}"' in body or f'href="{url.replace("&", "&amp;")}"' in body
+
+
+def test_pruning():
+    print("\nmedia pruning")
+    cwd = in_temp_repo()
+    try:
+        site = "https://o.github.io/r/"
+        for name in ("m/111111-1.jpg", "m/111111.mp4", "m/111111-poster.jpg",
+                     "m/222222-1.jpg", "p/111111.html", "p/222222.html", "m/avatar.jpg"):
+            os.makedirs(os.path.dirname(f"docs/s/{name}"), exist_ok=True)
+            open(f"docs/s/{name}", "w").close()
+        kept = [post("g", site + "s/p/111111.html")]
+        removed = bf.prune_media("s", kept, site)
+        remaining = sorted(os.listdir("docs/s/m") + os.listdir("docs/s/p"))
+        check("files of evicted posts are removed", removed == 2, f"removed={removed}")
+        check("files of kept posts and the avatar stay", remaining == sorted(
+            ["111111-1.jpg", "111111.mp4", "111111-poster.jpg", "avatar.jpg", "111111.html"]),
+            str(remaining))
+    finally:
+        os.chdir(cwd)
+
+
+def test_media_switch():
+    print("\nmedia switch")
+    tmp = tempfile.mkdtemp()
+    check("media defaults to on", bf.load_source(write_source(tmp, "on"))["media"] is True)
+    check("media can be switched off",
+          bf.load_source(write_source(tmp, "off", media=False))["media"] is False)
+    try:
+        bf.load_source(write_source(tmp, "bad", media="false"))
+        check("media as a string is rejected", False)
+    except bf.ConfigError:
+        check("media as a string is rejected", True)
+    check("the new key chains are accepted as overrides",
+          bool(bf.load_source(write_source(tmp, "k", keys={"images": ["pics.*"]}))))
+
+
 def main():
     for test in (
+        test_media_extraction,
+        test_download_guards,
+        test_post_pages,
+        test_pruning,
+        test_media_switch,
         test_config_validation,
         test_path_containment,
         test_parsing,

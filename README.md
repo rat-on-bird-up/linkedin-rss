@@ -103,6 +103,7 @@ spending anything, and deleting a source file leaves the run green.
 | `max_charge_usd` | 0.50 | Hard per-run spend ceiling, enforced by Apify |
 | `timeout` | 300 | Seconds to wait for the actor |
 | `enabled` | true | Set false to pause a source without deleting its archive |
+| `media` | true | Copy images and video and give each new post a page here, see below |
 | `keys` | built-in guesses | Per-field parser overrides, see below |
 | `_anything` | | Ignored, so use it for comments |
 
@@ -111,7 +112,8 @@ exists.
 
 ### When a new actor's output does not parse
 
-`keys` maps the five fields a feed entry needs onto that actor's output. Each is
+`keys` maps the five fields a feed entry needs onto that actor's output (plus
+the four media fields, see below). Each is
 a list of dotted paths tried in order, and a numeric segment indexes a list.
 
 ```json
@@ -129,6 +131,57 @@ headline.
 
 Items with no text, no link and no id are dropped. If every item drops, the
 source fails rather than publishing an empty feed.
+
+## Images, video and post pages
+
+Every new post gets a page of its own at `docs/<slug>/p/<id>.html`, with its
+images, its video and a still from that video copied into `docs/<slug>/m/`. The
+feed entry links to that page, not to the platform. It all happens inside the
+weekly build, so nothing runs anywhere else.
+
+Why a page rather than just images in the feed: Readwise Reader shows the page
+an entry links to and ignores the feed's own HTML. Linked to LinkedIn, it gets
+whatever LinkedIn's public page serves that day: images usually, video only
+sometimes. Linked to a page here, it gets exactly this page, video included.
+Why copies rather than the platform's URLs: the media URLs an actor returns are
+signed and expire (LinkedIn: images after about three weeks, video after
+seven days), and Reader hotlinks rather than copying. The full test write-up is
+in `notes/reader-media-findings.md`.
+
+What each entry carries:
+
+- `<link>`: the page here. The original post is kept as the entry's
+  `<atom:link rel="via">`, and that is what identifies the post across runs.
+- `<media:thumbnail>`: the post's first image, else a still from its video,
+  else the author's profile picture. This is the picture beside the entry in
+  Reader's list.
+- `<content:encoded>`: the same HTML as the page, for readers that use it.
+- The channel `<image>` is the author's profile picture, used as the feed's
+  icon.
+
+Only entries not yet published get a page. Rewriting the link of an entry
+already out would make every reader import it a second time, so posts from
+before this change keep linking to the platform.
+
+Files belonging to a post that drops out of the feed's `max_items` window are
+deleted, so the site stays roughly the size of the last 60 posts. At Brad
+Haft's pace that is about 5 MB per 25 posts. Git history still grows by about
+that much each time new media lands.
+
+Limits: an image over 15 MB or a video over 50 MB is skipped and the page links
+to the original instead. A failed download never fails the feed: the page is
+published with whatever did arrive.
+
+ffmpeg makes the video stills and shrinks the profile picture. The workflow
+installs it if the runner lacks it; without it, video posts fall back to the
+profile picture.
+
+The media fields are key chains like the other five, so another actor's output
+can be mapped with `keys`: `images`, `video`, `avatar` and `quote` (the text of
+a post being reshared). Two extra path forms exist for these: `*` fans out over
+a list, and `name[key=value]` keeps a value only when its field matches, which
+is how an image post's `media.url` is kept out of `video`. Set `"media": false`
+on a source to switch all of this off and get the old text-only entries.
 
 ## Setup
 
@@ -177,7 +230,7 @@ That is deliberate. The commit is proof the job ran, and it resets GitHub's
 
 ## Tests
 
-`python scripts/test_build_feed.py` runs 41 cases, no network, a couple of
+`python scripts/test_build_feed.py` runs 81 cases, no network, a couple of
 seconds. CI runs it before spending anything.
 
 Every case corresponds to a fault that actually occurred here, most of them
