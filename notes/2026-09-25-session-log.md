@@ -105,8 +105,8 @@ The cycle ended the day at $1.82 used of $5.
 
 ## Still open
 
-- Map video and avatar fields for HarvestAPI's actor if it replaces
-  apimaestro for feeds.
+- Wire HarvestAPI's actor into the feeds if it replaces apimaestro. The
+  field mapping is known; see linkedin-post-data-sources.md, section 8.
 - Recipes for LinkedIn company pages and for Instagram, TikTok and X still
   need their media key chains mapped, each from one real build.
 - The `url-to-feed` skill should say: run one build before subscribing in

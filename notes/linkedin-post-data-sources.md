@@ -184,7 +184,12 @@ Data findings:
   - `engagement` (likes, comments, shares, reactions by type);
   - `author` (with a `type` of profile or company);
   - `repostedBy`, `repostedAt`.
-- **Not verified:** video fields.
+- **Other media, verified from the same 34 items:**
+  - `postVideo` (videoUrl, a 720p mp4, plus thumbnailUrl) on 7 posts;
+  - `document` (title, page count, cover images, a transcribed PDF link);
+  - `article` (link, title, image);
+  - `contentAttributes[]`: every tagged person or company, with its offset in the text.
+- **A repost's original post** sits in `repost`: author, text, media, date and engagement.
 
 Company pages: `targetUrls` also takes `linkedin.com/company/...` URLs. Two
 company pages returned 6 posts, charged as 6 `post` events plus the start
@@ -203,6 +208,9 @@ more often. Not yet seen: a company page with nothing in the window
   - id: `entityId`
   - images: `postImages.*.url`
 
-  Video and avatar still need mapping. Not done yet.
+  - video: `postVideo.videoUrl`, thumbnail `postVideo.thumbnailUrl`
+  - avatar: `author.avatar.url`
+
+  Not wired up yet.
 - apimaestro stays, because it is proven with this repo's feeds, and it is
   the reference for checking any other actor.
