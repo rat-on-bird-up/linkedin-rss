@@ -1,11 +1,16 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:media="http://search.yahoo.com/mrss/" xmlns:content="http://purl.org/rss/1.0/modules/content/">
   <channel>
     <title>Brad Haft — LinkedIn posts</title>
     <link>https://www.linkedin.com/in/bradhaft/</link>
     <description>Public LinkedIn posts, rebuilt weekly as RSS.</description>
     <atom:link href="https://rat-on-bird-up.github.io/linkedin-rss/feed.xml" rel="self" type="application/rss+xml"/>
-    <lastBuildDate>Fri, 25 Sep 2026 09:19:49 +0000</lastBuildDate>
+    <lastBuildDate>Fri, 25 Sep 2026 11:01:20 +0000</lastBuildDate>
+    <image>
+      <url>https://rat-on-bird-up.github.io/linkedin-rss/feed/m/avatar.jpg</url>
+      <title>Brad Haft — LinkedIn posts</title>
+      <link>https://www.linkedin.com/in/bradhaft/</link>
+    </image>
     <item>
       <title>Excited to announce i&#x27;m taking paternity leave. Just adopted a highway!! 🫃</title>
       <link>https://www.linkedin.com/posts/bradhaft_excited-to-announce-im-taking-paternity-activity-7508598298006691842-sAQK</link>
