@@ -121,7 +121,7 @@ about $8/month for 15 feeds with 60-minute refresh.
 
 - **No top-ups.** The Free plan blocks runs once its $5 monthly credit is
   used.
-- **Paid plans include their fee as usage:** Starter's $19 counts toward
+- **Paid plans include their fee as usage:** Starter's $19 counts towards
   what you spend, then pay-as-you-go.
 - **No rollover:** unused credit expires every month, on every plan.
 - **Starter adds:** 32 concurrent runs (Free: 5), chat support, and the Bronze
