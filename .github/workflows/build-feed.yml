@@ -93,7 +93,7 @@ jobs:
           export-env: true
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
-          APIFY_TOKEN: op://Automation/Apify/credential
+          APIFY_TOKEN: op://Automation/ymbu2aylo5464btwsam3dkkhqi/credential  # item "Apify 01" (by id, so a rename cannot break it)
 
       - name: Build the feeds
         id: build
