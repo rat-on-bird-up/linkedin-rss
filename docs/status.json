@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-11-01T14:03:34.403049+00:00",
-  "run_url": "https://github.com/rat-on-bird-up/linkedin-rss/actions/runs/41314217949",
+  "generated_at": "2026-11-08T14:05:01.964147+00:00",
+  "run_url": "https://github.com/rat-on-bird-up/linkedin-rss/actions/runs/42487976312",
   "sources": [
     {
       "slug": "linkedin-bradhaft",
@@ -8,11 +8,11 @@
       "feed": "https://rat-on-bird-up.github.io/linkedin-rss/linkedin-bradhaft.xml",
       "status": "ok",
       "items": 60,
-      "added_last_run": 7,
-      "evicted_last_run": 7,
+      "added_last_run": 2,
+      "evicted_last_run": 2,
       "fetched_last_run": 25,
-      "last_success": "2026-11-01T14:03:28.316279+00:00",
-      "last_attempt": "2026-11-01T14:03:34.403059+00:00",
+      "last_success": "2026-11-08T14:04:57.464540+00:00",
+      "last_attempt": "2026-11-08T14:05:01.964163+00:00",
       "error": ""
     }
   ]
